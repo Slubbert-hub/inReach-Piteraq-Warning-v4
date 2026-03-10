@@ -12,70 +12,59 @@
       margin:0;
       padding:20px;
     }
-
     .wrap{
       max-width:980px;
       margin:0 auto;
     }
-
     h1{
       margin:0 0 8px 0;
       font-size:clamp(36px,6vw,64px);
       line-height:1;
     }
-
     .topmeta{
       font-size:16px;
       opacity:.85;
       line-height:1.45;
     }
-
     .grid{
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
       gap:16px;
       margin-top:18px;
     }
-
     .card{
       background:#1e293b;
       border-radius:22px;
       padding:20px;
       box-shadow:0 8px 20px rgba(0,0,0,.12);
     }
-
     .label{
       font-size:15px;
       opacity:.78;
       margin-bottom:8px;
     }
-
     .big{
       font-size:clamp(24px,5vw,34px);
       font-weight:800;
       line-height:1.1;
     }
-
     .mid{
       font-size:clamp(22px,4vw,30px);
       font-weight:800;
       line-height:1.15;
     }
-
     .small{
       font-size:15px;
       opacity:.82;
       margin-top:6px;
       line-height:1.35;
     }
-
     .riskline{
       display:flex;
       align-items:center;
       gap:14px;
       flex-wrap:wrap;
     }
-
     .badge{
       display:inline-block;
       padding:10px 18px;
@@ -84,12 +73,10 @@
       font-weight:900;
       color:#0f172a;
     }
-
     .badge.GRN{ background:#22c55e; }
     .badge.YEL{ background:#eab308; }
     .badge.ORG{ background:#f59e0b; }
     .badge.RED{ background:#ef4444; color:#fff; }
-
     .messagebox{
       background:#0b1220;
       border-radius:18px;
@@ -102,28 +89,30 @@
       line-height:1.15;
       margin-top:10px;
     }
-
-    .copy{
+    .btnrow{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
       margin-top:14px;
+    }
+    .btn{
       border:none;
       border-radius:14px;
       padding:14px 22px;
       font-size:18px;
       font-weight:800;
-      background:#3b82f6;
       color:#fff;
     }
-
+    .btn-blue{ background:#3b82f6; }
+    .btn-green{ background:#16a34a; }
     .statuswarn{
       color:#fbbf24;
       font-weight:700;
     }
-
     .statusok{
       color:#86efac;
       font-weight:700;
     }
-
     .sectionspace{
       margin-top:18px;
     }
@@ -136,6 +125,10 @@
       <h1>Piteraq Monitor</h1>
       <div class="topmeta" id="metaLine">Laster data ...</div>
       <div class="small" id="trendStatusLine"></div>
+      <div class="small">Viser sist lagrede varsel. Trykk «Hent varsel» for å laste inn nyeste data.</div>
+      <div class="btnrow">
+        <button class="btn btn-green" onclick="loadData()">Hent varsel</button>
+      </div>
     </div>
 
     <div class="grid sectionspace">
@@ -153,7 +146,9 @@
       <div class="card">
         <div class="label">inReach message</div>
         <div class="messagebox" id="messageBox">-</div>
-        <button class="copy" onclick="copyMsg()">Kopier melding</button>
+        <div class="btnrow">
+          <button class="btn btn-blue" onclick="copyMsg()">Kopier melding</button>
+        </div>
       </div>
 
       <div class="card">
@@ -261,8 +256,7 @@
     }
 
     function copyMsg() {
-      const txt = document.getElementById("messageBox").innerText;
-      navigator.clipboard.writeText(txt);
+      navigator.clipboard.writeText(document.getElementById("messageBox").innerText);
     }
 
     function setRiskBadge(level) {
@@ -271,9 +265,11 @@
       badge.innerText = level || "-";
     }
 
-    fetch("data.json?" + Date.now())
-      .then(r => r.json())
-      .then(d => {
+    async function loadData() {
+      try {
+        const r = await fetch("data.json?" + Date.now());
+        const d = await r.json();
+
         const meta = d.meta || {};
         const inputs = d.inputs || {};
         const scores = d.scores || {};
@@ -334,11 +330,13 @@
           fmtInt(derived.katabaticPotential, "/100");
         document.getElementById("katabaticSub").innerText =
           `cold72 ${fmt(derived.coldSupport72h, " °C")}`;
-      })
-      .catch(err => {
+      } catch (err) {
         document.getElementById("metaLine").innerText = "Kunne ikke laste data.json";
         document.getElementById("trendStatusLine").innerText = String(err);
-      });
+      }
+    }
+
+    loadData();
   </script>
 </body>
 </html>
