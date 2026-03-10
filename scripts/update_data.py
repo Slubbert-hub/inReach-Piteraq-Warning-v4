@@ -1,5 +1,4 @@
 import json
-import math
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -37,7 +36,8 @@ DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 LOCATION_NAME = "TASIILAQ"
 
-REQUEST_SLEEP = 0.6
+REQUEST_SLEEP = 0.35
+REQUEST_TIMEOUT = 20
 TIME_TOLERANCE_HOURS = 2.5
 
 
@@ -87,7 +87,10 @@ def load_json(path, default):
 
 
 def save_json(path, payload):
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def get_json(url, params=None, retries=3):
@@ -95,12 +98,12 @@ def get_json(url, params=None, retries=3):
     for attempt in range(retries):
         try:
             time.sleep(REQUEST_SLEEP)
-            r = requests.get(url, params=params, timeout=30)
+            r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
             r.raise_for_status()
             return r.json()
         except Exception as e:
             last_err = e
-            time.sleep(1.5 + attempt)
+            time.sleep(1.0 + attempt)
     raise last_err
 
 
@@ -162,37 +165,46 @@ def parse_coverage_series(data, parameter_names):
 def nearest_candidate(candidates, target_dt, used_keys):
     best = None
     best_diff = None
+
     for c in candidates:
         key = (c["instanceId"], c["validTime"])
         if key in used_keys:
             continue
+
         diff_h = abs((c["dt"] - target_dt).total_seconds()) / 3600.0
         if diff_h > TIME_TOLERANCE_HOURS:
             continue
+
         if best is None or diff_h < best_diff:
             best = c
             best_diff = diff_h
+
     return best
 
 
 def collect_valid_time_pool(instances, lon, lat):
     pool = []
-    for iid in instances:
+
+    # Bare de siste få instances for å holde responstiden nede
+    for iid in instances[-6:]:
         try:
             data = fetch_position(iid, lon, lat, ["pressure-sealevel"])
             times, _ = parse_coverage_series(data, ["pressure-sealevel"])
             for t in times:
-                pool.append({
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                })
+                pool.append(
+                    {
+                        "instanceId": iid,
+                        "validTime": t,
+                        "dt": parse_iso(t),
+                    }
+                )
         except Exception:
             continue
 
     uniq = {}
     for item in pool:
         uniq[(item["instanceId"], item["validTime"])] = item
+
     return sorted(uniq.values(), key=lambda x: x["dt"])
 
 
@@ -426,23 +438,16 @@ def classify_risk(score):
 
 
 def gradient_boost(gradient_hpa):
-    """
-    Ekstra boost når gradient passerer omtrent piteraq-relevant område.
-    0 under 20, gradvis økende mot 1 ved 40.
-    """
     return norm(gradient_hpa, 20, 40)
 
 
 def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
-    """
-    Hvor nær systemet er å bli problematisk hvis triggeren fortsetter å bygge.
-    """
     return 100 * (
-        0.35 * (reservoir / 100.0) +
-        0.20 * (coupling / 100.0) +
-        0.25 * norm(gradient, 15, 40) +
-        0.10 * norm(d6, 0, 8) +
-        0.10 * norm(ice_wind_trend_6h, 0, 6)
+        0.35 * (reservoir / 100.0)
+        + 0.20 * (coupling / 100.0)
+        + 0.25 * norm(gradient, 15, 40)
+        + 0.10 * norm(d6, 0, 8)
+        + 0.10 * norm(ice_wind_trend_6h, 0, 6)
     )
 
 
@@ -488,7 +493,7 @@ def main():
         "icePressureAnomNow": round(ice_pressure_anom_now, 1),
         "coldSupportNow": round(cold_support_now, 1),
         "dTCoastIceNow": round(dT_coast_ice, 1),
-        "sector": sector
+        "sector": sector,
     }
 
     history.append(snapshot)
@@ -512,59 +517,53 @@ def main():
     cold_72_mean = avg(cold_72)
     dT_72_mean = avg(dT_72)
 
-    # Reservoir
     reservoir = 100 * (
-        0.55 * norm(ice_anom_72_mean, -12, 12) +
-        0.20 * norm(ice_pressure_anom_now, -12, 12) +
-        0.15 * norm(ice_pressure_trend_24h, -3, 8) +
-        0.10 * norm(ice_pressure_trend_72h, -5, 12)
+        0.55 * norm(ice_anom_72_mean, -12, 12)
+        + 0.20 * norm(ice_pressure_anom_now, -12, 12)
+        + 0.15 * norm(ice_pressure_trend_24h, -3, 8)
+        + 0.10 * norm(ice_pressure_trend_72h, -5, 12)
     )
     reservoir = clamp(reservoir, 0, 100)
     if ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
-    # Coupling
     sector_score = {"S": 100, "SC": 90, "C": 75, "N": 40}.get(sector, 25)
     coupling = 100 * (
-        0.60 * (sector_score / 100.0) +
-        0.25 * norm(sea_low_depth, 5, 30) +
-        0.15 * norm(ice_wind, 4, 20)
+        0.60 * (sector_score / 100.0)
+        + 0.25 * norm(sea_low_depth, 5, 30)
+        + 0.15 * norm(ice_wind, 4, 20)
     )
     coupling = clamp(coupling, 0, 100)
 
-    # Katabatisk potensial
     thermal_component = 100 * (
-        0.55 * norm(dT_72_mean, 3, 20) +
-        0.30 * norm(cold_72_mean, 5, 25) +
-        0.15 * norm(dT_coast_ice, 10, 35)
+        0.55 * norm(dT_72_mean, 3, 20)
+        + 0.30 * norm(cold_72_mean, 5, 25)
+        + 0.15 * norm(dT_coast_ice, 10, 35)
     )
     thermal_component = clamp(thermal_component, 0, 100)
     reservoir_factor = 0.35 + 0.65 * (reservoir / 100.0)
     katabatic_potential = clamp(thermal_component * reservoir_factor, 0, 100)
 
-    # Trigger med gradient-boost
     gboost = gradient_boost(gradient)
     trigger = 100 * (
-        0.28 * norm(gradient, 0, 65) +
-        0.10 * gboost +
-        0.16 * norm(sf6, 0, 10) +
-        0.10 * norm(sf12, 0, 14) +
-        0.12 * norm(d6, 0, 10) +
-        0.08 * norm(d12, 0, 14) +
-        0.07 * norm(acc_g, 0, 6) +
-        0.04 * norm(acc_s, 0, 6) +
-        0.05 * norm(ice_wind_trend_6h, 0, 6)
+        0.28 * norm(gradient, 0, 65)
+        + 0.10 * gboost
+        + 0.16 * norm(sf6, 0, 10)
+        + 0.10 * norm(sf12, 0, 14)
+        + 0.12 * norm(d6, 0, 10)
+        + 0.08 * norm(d12, 0, 14)
+        + 0.07 * norm(acc_g, 0, 6)
+        + 0.04 * norm(acc_s, 0, 6)
+        + 0.05 * norm(ice_wind_trend_6h, 0, 6)
     )
     trigger = clamp(trigger, 0, 100)
 
-    # Potential index
     potential = clamp(
         potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h),
         0,
-        100
+        100,
     )
 
-    # Watch
     watch = (
         (reservoir >= 30 or potential >= 45)
         and coupling >= 60
@@ -577,7 +576,6 @@ def main():
         )
     )
 
-    # Risk nå
     base = 0.58 * trigger + 0.32 * reservoir + 0.10 * potential
     risk = base * (0.60 + 0.40 * (coupling / 100.0))
 
@@ -610,7 +608,7 @@ def main():
             "location": LOCATION_NAME,
             "model": COLLECTION,
             "forecastInfo": "Latest available forecast step",
-            "instanceId": latest
+            "instanceId": latest,
         },
         "inputs": {
             "icePressure": round(ice_pressure, 1),
@@ -622,14 +620,14 @@ def main():
             "sf12": round(sf12, 1),
             "iceWind": round(ice_wind, 1),
             "iceWindTrend6h": round(ice_wind_trend_6h, 1),
-            "coastIceDeltaT": round(dT_coast_ice, 1)
+            "coastIceDeltaT": round(dT_coast_ice, 1),
         },
         "scores": {
             "reservoir": int(round(reservoir)),
             "trigger": int(round(trigger)),
             "coupling": int(round(coupling)),
             "potential": int(round(potential)),
-            "risk": int(round(risk))
+            "risk": int(round(risk)),
         },
         "derived": {
             "watch": watch,
@@ -648,13 +646,13 @@ def main():
             "selectedTimes": trig["selectedTimes"],
             "usedReservoirPoints": now_fields["usedReservoirPoints"],
             "usedIcePoints": now_fields["usedIcePoints"],
-            "usedSeaPoints": now_fields["usedSeaPoints"]
+            "usedSeaPoints": now_fields["usedSeaPoints"],
         },
         "output": {
             "level": level,
             "phase": phase,
-            "message": message
-        }
+            "message": message,
+        },
     }
 
     save_json(DATA_FILE, payload)
@@ -664,4 +662,27 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        fallback = load_json(
+            DATA_FILE,
+            {
+                "meta": {},
+                "inputs": {},
+                "scores": {},
+                "derived": {},
+                "output": {},
+            },
+        )
+        fallback["meta"] = {
+            "source": "DMI HARMONIE",
+            "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "location": LOCATION_NAME,
+            "model": COLLECTION,
+            "forecastInfo": f"Update failed: {str(e)}",
+            "instanceId": "-",
+        }
+        save_json(DATA_FILE, fallback)
+        print("Script failed:", str(e))
+        raise
