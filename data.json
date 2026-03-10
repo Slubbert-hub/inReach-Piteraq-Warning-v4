@@ -1,1 +1,53 @@
-
+{
+  "meta": {
+    "source": "DMI HARMONIE",
+    "updatedAt": "-",
+    "location": "TASIILAQ",
+    "model": "harmonie_ig_sf",
+    "forecastInfo": "Latest available forecast step",
+    "instanceId": "-"
+  },
+  "inputs": {
+    "icePressure": 0,
+    "seaPressure": 0,
+    "gradient": 0,
+    "d6": 0,
+    "d12": 0,
+    "sf6": 0,
+    "sf12": 0,
+    "iceWind": 0,
+    "iceWindTrend6h": 0,
+    "coastIceDeltaT": 0
+  },
+  "scores": {
+    "reservoir": 0,
+    "trigger": 0,
+    "coupling": 0,
+    "potential": 0,
+    "risk": 0
+  },
+  "derived": {
+    "watch": false,
+    "sector": "?",
+    "icePressureAnomNow": 0,
+    "icePressureAnom72hMean": 0,
+    "icePressureTrend24h": 0,
+    "icePressureTrend72h": 0,
+    "coldSupport72h": 0,
+    "katabaticPotential": 0,
+    "seaLowDepth": 0,
+    "gradientBoost": 0,
+    "accG": 0,
+    "accS": 0,
+    "trendDataStatus": "-",
+    "selectedTimes": {},
+    "usedReservoirPoints": 0,
+    "usedIcePoints": 0,
+    "usedSeaPoints": 0
+  },
+  "output": {
+    "level": "GRN",
+    "phase": "INIT",
+    "message": "TASIILAQ GRN 12-24T RES0 TRG0 CPL0 ICE0.0 SEA0.0 GR0.0 d6+0.0 d12+0.0 SF6+0.0 SF12+0.0 DT0 AG0 AS0"
+  }
+}
