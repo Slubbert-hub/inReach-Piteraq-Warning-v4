@@ -1,55 +1,58 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-10 15:02 UTC",
+    "updatedAt": "2026-03-10 17:12 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
     "instanceId": "2026-03-10T120000Z"
   },
   "inputs": {
-    "icePressure": 996.1,
-    "seaPressure": 976.9,
-    "gradient": 19.3,
-    "d6": 0.2,
-    "d12": 0.0,
-    "sf6": -1.0,
-    "sf12": 0.0,
-    "iceWind": 10.3,
-    "iceWindTrend6h": 3.0,
-    "coastIceDeltaT": 33.3
+    "icePressure": 994.1,
+    "seaPressure": 978.0,
+    "gradient": 16.0,
+    "d6": -6.3,
+    "d12": -3.4,
+    "sf6": -2.1,
+    "sf12": -2.7,
+    "iceWind": 7.6,
+    "iceWindTrend6h": 0.0,
+    "coastIceDeltaT": 35.5
   },
   "scores": {
     "reservoir": 7,
-    "trigger": 11,
-    "coupling": 69,
-    "potential": 26,
-    "risk": 10
+    "trigger": 7,
+    "coupling": 65,
+    "potential": 17,
+    "risk": 7
   },
   "derived": {
     "watch": false,
     "sector": "C",
-    "icePressureAnomNow": -17.2,
-    "icePressureAnom72hMean": -17.2,
+    "icePressureAnomNow": -19.2,
+    "icePressureAnom72hMean": -18.2,
     "icePressureTrend24h": 0.0,
     "icePressureTrend72h": 0.0,
-    "coldSupport72h": 33.6,
-    "katabaticPotential": 39,
-    "seaLowDepth": 23.1,
+    "coldSupport72h": 34.5,
+    "katabaticPotential": 40,
+    "seaLowDepth": 22.0,
     "gradientBoost": 0.0,
-    "accG": 0.0,
-    "accS": 0.0,
-    "trendDataStatus": "partial",
+    "accG": -9.1,
+    "accS": -1.6,
+    "trendDataStatus": "ok",
     "selectedTimes": {
       "now": {
         "instanceId": "2026-03-10T060000Z",
-        "validTime": "2026-03-10T15:00:00.000Z"
+        "validTime": "2026-03-10T17:00:00.000Z"
       },
       "m6": {
         "instanceId": "2026-03-10T060000Z",
-        "validTime": "2026-03-10T09:00:00.000Z"
+        "validTime": "2026-03-10T11:00:00.000Z"
       },
-      "m12": null
+      "m12": {
+        "instanceId": "2026-03-10T060000Z",
+        "validTime": "2026-03-10T06:00:00.000Z"
+      }
     },
     "usedReservoirPoints": 2,
     "usedIcePoints": 2,
@@ -58,6 +61,6 @@
   "output": {
     "level": "GRN",
     "phase": "PITERAQ LOW",
-    "message": "TASIILAQ GRN 12-24T T? RES7 TRG11 CPL69 ICE996.1 SEA976.9 GR19.3 d6+0.2 d12+0.0 SF6-1.0 SF12+0.0 DT33 AG0 AS0"
+    "message": "TASIILAQ GRN 12-24T RES7 TRG7 CPL65 ICE994.1 SEA978.0 GR16.0 d6-6.3 d12-3.4 SF6-2.1 SF12-2.7 DT35 AG0 AS0"
   }
 }

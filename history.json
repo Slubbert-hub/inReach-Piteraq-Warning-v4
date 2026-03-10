@@ -9,5 +9,16 @@
     "coldSupportNow": 33.6,
     "dTCoastIceNow": 33.3,
     "sector": "C"
+  },
+  {
+    "t": "2026-03-10T17:12:45.382876+00:00",
+    "icePressure": 994.1,
+    "seaPressure": 978.0,
+    "gradient": 16.0,
+    "iceWind": 7.6,
+    "icePressureAnomNow": -19.2,
+    "coldSupportNow": 35.5,
+    "dTCoastIceNow": 35.5,
+    "sector": "C"
   }
 ]
