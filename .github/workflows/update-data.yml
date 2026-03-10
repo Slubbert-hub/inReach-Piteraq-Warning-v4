@@ -3,10 +3,14 @@ name: Update piteraq data
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 * * * *"
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
+
+concurrency:
+  group: piteraq-data-update
+  cancel-in-progress: true
 
 jobs:
   update:
