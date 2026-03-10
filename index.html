@@ -1,322 +1,344 @@
 <!DOCTYPE html>
-<html>
+<html lang="no">
 <head>
-<meta charset="utf-8">
-<title>Piteraq Monitor</title>
+  <meta charset="utf-8" />
+  <title>Piteraq Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{
+      background:#0f172a;
+      color:#fff;
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      margin:0;
+      padding:20px;
+    }
 
-<meta name="viewport" content="width=device-width, initial-scale=1">
+    .wrap{
+      max-width:980px;
+      margin:0 auto;
+    }
 
-<style>
+    h1{
+      margin:0 0 8px 0;
+      font-size:clamp(36px,6vw,64px);
+      line-height:1;
+    }
 
-body{
-background:#0f172a;
-color:white;
-font-family:system-ui;
-margin:0;
-padding:20px;
-}
+    .topmeta{
+      font-size:16px;
+      opacity:.85;
+      line-height:1.45;
+    }
 
-h1{
-margin-top:0;
-}
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:16px;
+      margin-top:18px;
+    }
 
-.grid{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-gap:16px;
-}
+    .card{
+      background:#1e293b;
+      border-radius:22px;
+      padding:20px;
+      box-shadow:0 8px 20px rgba(0,0,0,.12);
+    }
 
-.card{
-background:#1e293b;
-border-radius:14px;
-padding:16px;
-}
+    .label{
+      font-size:15px;
+      opacity:.78;
+      margin-bottom:8px;
+    }
 
-.label{
-font-size:14px;
-opacity:.7;
-}
+    .big{
+      font-size:clamp(24px,5vw,34px);
+      font-weight:800;
+      line-height:1.1;
+    }
 
-.big{
-font-size:34px;
-font-weight:700;
-}
+    .mid{
+      font-size:clamp(22px,4vw,30px);
+      font-weight:800;
+      line-height:1.15;
+    }
 
-.mid{
-font-size:24px;
-font-weight:600;
-}
+    .small{
+      font-size:15px;
+      opacity:.82;
+      margin-top:6px;
+      line-height:1.35;
+    }
 
-.small{
-font-size:13px;
-opacity:.7;
-}
+    .riskline{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      flex-wrap:wrap;
+    }
 
-.copy{
-margin-top:10px;
-padding:10px;
-background:#2563eb;
-border:none;
-border-radius:8px;
-color:white;
-font-weight:600;
-}
+    .badge{
+      display:inline-block;
+      padding:10px 18px;
+      border-radius:14px;
+      font-size:18px;
+      font-weight:900;
+      color:#0f172a;
+    }
 
-pre{
-white-space:pre-wrap;
-font-size:15px;
-}
+    .badge.GRN{ background:#22c55e; }
+    .badge.YEL{ background:#eab308; }
+    .badge.ORG{ background:#f59e0b; }
+    .badge.RED{ background:#ef4444; color:#fff; }
 
-</style>
+    .messagebox{
+      background:#0b1220;
+      border-radius:18px;
+      padding:18px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:18px;
+      font-weight:700;
+      white-space:pre-wrap;
+      word-break:break-word;
+      line-height:1.15;
+      margin-top:10px;
+    }
+
+    .copy{
+      margin-top:14px;
+      border:none;
+      border-radius:14px;
+      padding:14px 22px;
+      font-size:18px;
+      font-weight:800;
+      background:#3b82f6;
+      color:#fff;
+    }
+
+    .statuswarn{
+      color:#fbbf24;
+      font-weight:700;
+    }
+
+    .statusok{
+      color:#86efac;
+      font-weight:700;
+    }
+
+    .sectionspace{
+      margin-top:18px;
+    }
+  </style>
 </head>
-
-
 <body>
-
-<h1>Piteraq Monitor</h1>
-
-<div class="small" id="metaLine">loading...</div>
-
-<br>
-
-<div class="grid">
-
-<div class="card">
-<div class="label">Risk</div>
-<div class="big" id="riskLine">-</div>
-<div class="small" id="phaseLine"></div>
-<div class="small" id="watchLine"></div>
-</div>
-
-
-<div class="card">
-<div class="label">Reservoir</div>
-<div class="mid" id="reservoirLine">-</div>
-<div class="small">oppdemming over is</div>
-</div>
-
-<div class="card">
-<div class="label">Trigger</div>
-<div class="mid" id="triggerLine">-</div>
-<div class="small">gradient + trend + strait</div>
-</div>
-
-<div class="card">
-<div class="label">Coupling</div>
-<div class="mid" id="couplingLine">-</div>
-<div class="small">sektor + havlav</div>
-</div>
-
-<div class="card">
-<div class="label">Potential</div>
-<div class="mid" id="potentialLine">-</div>
-<div class="small">piteraq potensial</div>
-</div>
-
-
-<div class="card">
-<div class="label">Ice pressure</div>
-<div class="mid" id="icePressureLine">-</div>
-<div class="small" id="icePressureSub"></div>
-</div>
-
-<div class="card">
-<div class="label">Sea pressure</div>
-<div class="mid" id="seaPressureLine">-</div>
-<div class="small" id="sectorLine"></div>
-</div>
-
-
-<div class="card">
-<div class="label">Gradient</div>
-<div class="mid" id="gradientLine">-</div>
-<div class="small" id="gradientSub"></div>
-</div>
-
-<div class="card">
-<div class="label">d6</div>
-<div class="mid" id="d6Line">-</div>
-<div class="small">gradientendring 6t</div>
-</div>
-
-<div class="card">
-<div class="label">d12</div>
-<div class="mid" id="d12Line">-</div>
-<div class="small">gradientendring 12t</div>
-</div>
-
-
-<div class="card">
-<div class="label">SF6</div>
-<div class="mid" id="sf6Line">-</div>
-<div class="small">trykkfall strait 6t</div>
-</div>
-
-<div class="card">
-<div class="label">SF12</div>
-<div class="mid" id="sf12Line">-</div>
-<div class="small">trykkfall strait 12t</div>
-</div>
-
-
-<div class="card">
-<div class="label">Acceleration</div>
-<div class="mid" id="accLine">-</div>
-<div class="small">AG gradient · AS strait</div>
-</div>
-
-
-<div class="card">
-<div class="label">Ice wind</div>
-<div class="mid" id="iceWindLine">-</div>
-<div class="small" id="iceWindSub"></div>
-</div>
-
-
-<div class="card">
-<div class="label">Coast-ice ΔT</div>
-<div class="mid" id="dtLine">-</div>
-<div class="small">temperaturforskjell</div>
-</div>
-
-
-<div class="card">
-<div class="label">Katabatisk potensial</div>
-<div class="mid" id="katabaticLine">-</div>
-</div>
-
-</div>
-
-
-<br>
-
-<div class="card">
-
-<div class="label">inReach message</div>
-
-<pre id="messageBox">...</pre>
-
-<button class="copy" onclick="copyMsg()">Kopier melding</button>
-
-</div>
-
-
-<script>
-
-function fmt(x,unit=""){
-if(x===undefined||x===null)return "-";
-return x.toFixed(1)+unit;
-}
-
-function fmtInt(x,unit=""){
-if(x===undefined||x===null)return "-";
-return Math.round(x)+unit;
-}
-
-function copyMsg(){
-navigator.clipboard.writeText(
-document.getElementById("messageBox").innerText
-);
-}
-
-
-fetch("data.json?"+Date.now())
-.then(r=>r.json())
-.then(d=>{
-
-const meta=d.meta;
-const inputs=d.inputs;
-const scores=d.scores;
-const derived=d.derived;
-const out=d.output;
-
-
-document.getElementById("metaLine").innerText=
-`${meta.location} · oppdatert ${meta.updatedAt} · modell ${meta.model}`;
-
-
-document.getElementById("riskLine").innerText=
-`${out.level} · ${fmtInt(scores.risk,"/100")}`;
-
-document.getElementById("phaseLine").innerText=
-out.phase;
-
-document.getElementById("watchLine").innerText=
-derived.watch ? "WATCH ON":"WATCH OFF";
-
-
-document.getElementById("reservoirLine").innerText=
-fmtInt(scores.reservoir,"/100");
-
-document.getElementById("triggerLine").innerText=
-fmtInt(scores.trigger,"/100");
-
-document.getElementById("couplingLine").innerText=
-fmtInt(scores.coupling,"/100");
-
-document.getElementById("potentialLine").innerText=
-fmtInt(scores.potential,"/100");
-
-
-document.getElementById("icePressureLine").innerText=
-fmt(inputs.icePressure," hPa");
-
-document.getElementById("icePressureSub").innerText=
-`vs normal ${fmt(derived.icePressureAnomNow," hPa")}`;
-
-document.getElementById("seaPressureLine").innerText=
-fmt(inputs.seaPressure," hPa");
-
-document.getElementById("sectorLine").innerText=
-`sector ${derived.sector}`;
-
-
-document.getElementById("gradientLine").innerText=
-fmt(inputs.gradient," hPa");
-
-document.getElementById("gradientSub").innerText=
-`d6 ${fmt(inputs.d6," hPa")} · SF6 ${fmt(inputs.sf6," hPa")}`;
-
-
-document.getElementById("d6Line").innerText=
-fmt(inputs.d6," hPa");
-
-document.getElementById("d12Line").innerText=
-fmt(inputs.d12," hPa");
-
-
-document.getElementById("sf6Line").innerText=
-fmt(inputs.sf6," hPa");
-
-document.getElementById("sf12Line").innerText=
-fmt(inputs.sf12," hPa");
-
-
-document.getElementById("accLine").innerText=
-`AG ${fmt(derived.accG)} · AS ${fmt(derived.accS)}`;
-
-
-document.getElementById("iceWindLine").innerText=
-fmt(inputs.iceWind," m/s");
-
-document.getElementById("iceWindSub").innerText=
-`trend 6t ${fmt(inputs.iceWindTrend6h," m/s")}`;
-
-
-document.getElementById("dtLine").innerText=
-fmt(inputs.coastIceDeltaT," °C");
-
-
-document.getElementById("katabaticLine").innerText=
-fmtInt(derived.katabaticPotential,"/100");
-
-
-document.getElementById("messageBox").innerText=
-out.message;
-
-});
-
-</script>
-
+  <div class="wrap">
+
+    <div class="card">
+      <h1>Piteraq Monitor</h1>
+      <div class="topmeta" id="metaLine">Laster data ...</div>
+      <div class="small" id="trendStatusLine"></div>
+    </div>
+
+    <div class="grid sectionspace">
+
+      <div class="card">
+        <div class="label">Risk</div>
+        <div class="riskline">
+          <div class="big" id="riskLine">-</div>
+          <div class="badge" id="riskBadge">-</div>
+        </div>
+        <div class="small" id="phaseLine"></div>
+        <div class="small" id="watchLine"></div>
+      </div>
+
+      <div class="card">
+        <div class="label">inReach message</div>
+        <div class="messagebox" id="messageBox">-</div>
+        <button class="copy" onclick="copyMsg()">Kopier melding</button>
+      </div>
+
+      <div class="card">
+        <div class="label">Reservoir</div>
+        <div class="mid" id="reservoirLine">-</div>
+        <div class="small">oppdemming over is</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Trigger</div>
+        <div class="mid" id="triggerLine">-</div>
+        <div class="small">gradient + trend + strait-fall + akselerasjon</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Coupling</div>
+        <div class="mid" id="couplingLine">-</div>
+        <div class="small">sektor + havlav + vindstøtte</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Potential</div>
+        <div class="mid" id="potentialLine">-</div>
+        <div class="small">nærhet til kritisk piteraq-oppsett</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Ice pressure</div>
+        <div class="mid" id="icePressureLine">-</div>
+        <div class="small" id="icePressureSub">-</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Sea pressure</div>
+        <div class="mid" id="seaPressureLine">-</div>
+        <div class="small" id="sectorLine">-</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Gradient</div>
+        <div class="mid" id="gradientLine">-</div>
+        <div class="small" id="gradientSub">-</div>
+      </div>
+
+      <div class="card">
+        <div class="label">d6</div>
+        <div class="mid" id="d6Line">-</div>
+        <div class="small">gradientendring siste 6 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">d12</div>
+        <div class="mid" id="d12Line">-</div>
+        <div class="small">gradientendring siste 12 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">SF6</div>
+        <div class="mid" id="sf6Line">-</div>
+        <div class="small">trykkfall i strait siste 6 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">SF12</div>
+        <div class="mid" id="sf12Line">-</div>
+        <div class="small">trykkfall i strait siste 12 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Akselerasjon</div>
+        <div class="mid" id="accLine">-</div>
+        <div class="small">AG = gradient · AS = strait</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Ice wind</div>
+        <div class="mid" id="iceWindLine">-</div>
+        <div class="small" id="iceWindSub">-</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Coast-ice ΔT</div>
+        <div class="mid" id="dtLine">-</div>
+        <div class="small">temperaturforskjell kyst minus is</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Katabatisk potensial</div>
+        <div class="mid" id="katabaticLine">-</div>
+        <div class="small" id="katabaticSub">-</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function fmt(x, suffix = "") {
+      if (x === undefined || x === null || Number.isNaN(Number(x))) return "-";
+      return Number(x).toFixed(1) + suffix;
+    }
+
+    function fmtInt(x, suffix = "") {
+      if (x === undefined || x === null || Number.isNaN(Number(x))) return "-";
+      return Math.round(Number(x)) + suffix;
+    }
+
+    function copyMsg() {
+      const txt = document.getElementById("messageBox").innerText;
+      navigator.clipboard.writeText(txt);
+    }
+
+    function setRiskBadge(level) {
+      const badge = document.getElementById("riskBadge");
+      badge.className = "badge " + level;
+      badge.innerText = level || "-";
+    }
+
+    fetch("data.json?" + Date.now())
+      .then(r => r.json())
+      .then(d => {
+        const meta = d.meta || {};
+        const inputs = d.inputs || {};
+        const scores = d.scores || {};
+        const derived = d.derived || {};
+        const output = d.output || {};
+
+        document.getElementById("metaLine").innerText =
+          `${meta.location || "-"} · oppdatert ${meta.updatedAt || "-"} · modell ${meta.model || "-"}`;
+
+        const trendStatus = derived.trendDataStatus || "-";
+        const trendEl = document.getElementById("trendStatusLine");
+        if (trendStatus === "ok") {
+          trendEl.innerHTML = `<span class="statusok">Trendstatus: OK</span>`;
+        } else {
+          trendEl.innerHTML = `<span class="statuswarn">Trendstatus: ${trendStatus}</span>`;
+        }
+
+        document.getElementById("riskLine").innerText =
+          `${output.level || "-"} · ${fmtInt(scores.risk, "/100")}`;
+        setRiskBadge(output.level || "");
+        document.getElementById("phaseLine").innerText = output.phase || "-";
+        document.getElementById("watchLine").innerText = derived.watch ? "Watch ON" : "Watch OFF";
+
+        document.getElementById("messageBox").innerText = output.message || "-";
+
+        document.getElementById("reservoirLine").innerText = fmtInt(scores.reservoir, "/100");
+        document.getElementById("triggerLine").innerText = fmtInt(scores.trigger, "/100");
+        document.getElementById("couplingLine").innerText = fmtInt(scores.coupling, "/100");
+        document.getElementById("potentialLine").innerText = fmtInt(scores.potential, "/100");
+
+        document.getElementById("icePressureLine").innerText = fmt(inputs.icePressure, " hPa");
+        document.getElementById("icePressureSub").innerText =
+          `vs normal ${fmt(derived.icePressureAnomNow, " hPa")}`;
+
+        document.getElementById("seaPressureLine").innerText = fmt(inputs.seaPressure, " hPa");
+        document.getElementById("sectorLine").innerText = `sektor ${derived.sector || "-"}`;
+
+        document.getElementById("gradientLine").innerText = fmt(inputs.gradient, " hPa");
+        document.getElementById("gradientSub").innerText =
+          `d6 ${fmt(inputs.d6, " hPa")} · SF6 ${fmt(inputs.sf6, " hPa")}`;
+
+        document.getElementById("d6Line").innerText = fmt(inputs.d6, " hPa");
+        document.getElementById("d12Line").innerText = fmt(inputs.d12, " hPa");
+
+        document.getElementById("sf6Line").innerText = fmt(inputs.sf6, " hPa");
+        document.getElementById("sf12Line").innerText = fmt(inputs.sf12, " hPa");
+
+        document.getElementById("accLine").innerText =
+          `AG ${fmt(derived.accG)} · AS ${fmt(derived.accS)}`;
+
+        document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind, " m/s");
+        document.getElementById("iceWindSub").innerText =
+          `trend 6t ${fmt(inputs.iceWindTrend6h, " m/s")}`;
+
+        document.getElementById("dtLine").innerText = fmt(inputs.coastIceDeltaT, " °C");
+
+        document.getElementById("katabaticLine").innerText =
+          fmtInt(derived.katabaticPotential, "/100");
+        document.getElementById("katabaticSub").innerText =
+          `cold72 ${fmt(derived.coldSupport72h, " °C")}`;
+      })
+      .catch(err => {
+        document.getElementById("metaLine").innerText = "Kunne ikke laste data.json";
+        document.getElementById("trendStatusLine").innerText = String(err);
+      });
+  </script>
 </body>
 </html>
