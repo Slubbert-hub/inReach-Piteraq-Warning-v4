@@ -13,30 +13,27 @@ DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 
 REQUEST_TIMEOUT = 20
-REQUEST_SLEEP = 0.5
+REQUEST_SLEEP = 1.0
 REQUEST_RETRIES = 4
 TIME_TOLERANCE_HOURS = 2.5
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
-# Punkter vi vil lese ut fra bbox-gridet
-ICE_TARGETS = {
-    "core": (-39.5, 69.3),
-    "corridor": (-41.5, 68.1),
-}
+# 2 ispunkter
+ICE_POINTS = [
+    {"name": "core", "lon": -39.5, "lat": 69.3},
+    {"name": "corridor", "lon": -41.5, "lat": 68.1},
+]
 
-SEA_TARGETS = {
-    "SC": (-29.0, 65.0),
-    "C": (-27.0, 66.0),
-    "N": (-24.8, 67.0),
-}
+# 3 punkter i Danmarkstredet
+SEA_POINTS = [
+    {"name": "SC", "lon": -29.0, "lat": 65.0},
+    {"name": "C", "lon": -27.0, "lat": 66.0},
+    {"name": "N", "lon": -24.8, "lat": 67.0},
+]
 
-# Litt romslige bokser rundt punktene
-ICE_BBOX = (-42.2, 67.6, -38.6, 69.8)   # minLon, minLat, maxLon, maxLat
-SEA_BBOX = (-30.5, 64.4, -24.0, 67.4)
-
-ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m", "latitude", "longitude"]
-SEA_PARAMS = ["pressure-sealevel", "temperature-2m", "latitude", "longitude"]
+ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
+SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
 
 def clamp(x, lo, hi):
@@ -61,10 +58,6 @@ def parse_iso(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
-def iso_z(dt):
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def load_json(path, default):
     if not path.exists():
         return default
@@ -80,20 +73,25 @@ def save_json(path, payload):
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
     last_err = None
+
     for attempt in range(retries):
         try:
             time.sleep(REQUEST_SLEEP)
             r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+
             if r.status_code == 429:
                 wait = 5 + attempt * 3
-                print(f"429 from DMI, waiting {wait}s")
+                print(f"DMI rate limit (429). Waiting {wait}s...")
                 time.sleep(wait)
                 continue
+
             r.raise_for_status()
             return r.json()
+
         except Exception as e:
             last_err = e
-            time.sleep(1.0 + attempt)
+            time.sleep(1.5 + attempt)
+
     raise last_err
 
 
@@ -127,163 +125,78 @@ def list_instances():
     ids = sorted(set(ids))
     if not ids:
         raise RuntimeError("Fant ingen DMI instanceId-er.")
+
+    # bare siste 3 kjøringer
     return ids[-3:]
 
 
-def fetch_bbox(instance_id, bbox, params):
-    min_lon, min_lat, max_lon, max_lat = bbox
-    url = f"{BASE_URL}/collections/{COLLECTION}/instances/{instance_id}/bbox"
-    qp = {
-        "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat}",
-        "parameter-name": ",".join(params),
+def fetch_position(instance_id, lon, lat, parameter_names):
+    url = f"{BASE_URL}/collections/{COLLECTION}/instances/{instance_id}/position"
+    params = {
+        "coords": f"POINT({lon} {lat})",
+        "parameter-name": ",".join(parameter_names),
         "crs": "crs84",
         "f": "CoverageJSON",
     }
-    return get_json(url, params=qp)
+    return get_json(url, params=params)
 
 
-def parse_covjson(data, param_names):
+def parse_coverage_series(data, parameter_names):
     domain = data.get("domain", {})
     axes = domain.get("axes", {})
     times = axes.get("t", {}).get("values", [])
-    xs = axes.get("x", {}).get("values", [])
-    ys = axes.get("y", {}).get("values", [])
     ranges = data.get("ranges", {})
-    values = {p: ranges.get(p, {}).get("values", []) for p in param_names}
-    return times, xs, ys, values
+    values = {p: ranges.get(p, {}).get("values", []) for p in parameter_names}
+    return times, values
 
 
-def nearest_time_index(times, target_dt):
+def nearest_time_index(times, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
     if not times:
         return None
+
     parsed = [parse_iso(t) for t in times]
     best_i = None
     best_diff = None
+
     for i, dt in enumerate(parsed):
         diff_h = abs((dt - target_dt).total_seconds()) / 3600.0
         if best_diff is None or diff_h < best_diff:
             best_i = i
             best_diff = diff_h
-    if best_diff is None or best_diff > TIME_TOLERANCE_HOURS:
+
+    if best_diff is None or best_diff > tolerance_hours:
         return None
     return best_i
 
 
-def pick_target_indices(lat_vals, lon_vals, target_map):
+def collect_all_point_data(instances):
     """
-    lat_vals / lon_vals: flat lister for bbox-grid.
-    target_map: {"name": (lon, lat)}
+    Ett kall per punkt per instance, flere parametre i samme kall.
+    cache[instance]["ice"/"sea"][point_name] = {"times": [...], "values": {...}}
     """
-    out = {}
-    n = min(len(lat_vals), len(lon_vals))
-    for name, (t_lon, t_lat) in target_map.items():
-        best_i = None
-        best_d2 = None
-        for i in range(n):
-            lat = lat_vals[i]
-            lon = lon_vals[i]
-            if lat is None or lon is None:
-                continue
-            d2 = (lat - t_lat) ** 2 + (lon - t_lon) ** 2
-            if best_d2 is None or d2 < best_d2:
-                best_d2 = d2
-                best_i = i
-        out[name] = best_i
-    return out
-
-
-def value_at(flat_values, point_index, time_index, n_points):
-    if point_index is None or time_index is None:
-        return None
-    idx = time_index * n_points + point_index
-    if idx < 0 or idx >= len(flat_values):
-        return None
-    return flat_values[idx]
-
-
-def extract_fields_at(dataset, target_indices, time_index, point_type):
-    times, xs, ys, values = dataset
-    n_points = len(values.get("latitude", []))
-    if n_points == 0:
-        return None
-
-    if point_type == "ice":
-        pressures = []
-        temps = []
-        winds = []
-
-        for name in ["core", "corridor"]:
-            pi = target_indices.get(name)
-            p = value_at(values.get("pressure-sealevel", []), pi, time_index, n_points)
-            t = value_at(values.get("temperature-2m", []), pi, time_index, n_points)
-            w = value_at(values.get("wind-speed-100m", []), pi, time_index, n_points)
-
-            if p is not None:
-                pressures.append(p / 100.0)
-            if t is not None:
-                temps.append(kelvin_to_celsius(t))
-            if w is not None:
-                winds.append(w)
-
-        if not pressures:
-            return None
-
-        ice_pressure = 0.55 * pressures[0] + 0.45 * pressures[-1] if len(pressures) == 2 else pressures[0]
-        ice_wind = 0.55 * winds[0] + 0.45 * winds[-1] if len(winds) == 2 else (winds[0] if winds else 0.0)
-
-        return {
-            "pressure": ice_pressure,
-            "tempC": avg(temps),
-            "wind": ice_wind,
-            "count": len(pressures),
-        }
-
-    if point_type == "sea":
-        candidates = []
-        temps = []
-
-        for name in ["SC", "C", "N"]:
-            pi = target_indices.get(name)
-            p = value_at(values.get("pressure-sealevel", []), pi, time_index, n_points)
-            t = value_at(values.get("temperature-2m", []), pi, time_index, n_points)
-
-            if p is not None:
-                candidates.append((p / 100.0, name))
-            if t is not None:
-                temps.append(kelvin_to_celsius(t))
-
-        if not candidates:
-            return None
-
-        sea_pressure, sector = min(candidates, key=lambda x: x[0])
-
-        return {
-            "pressure": sea_pressure,
-            "tempC": avg(temps),
-            "sector": sector,
-            "count": len(candidates),
-        }
-
-    return None
-
-
-def collect_all_bbox_data(instances):
     cache = {}
+
     for iid in instances:
-        print(f"Fetching bbox data for {iid}")
-        ice_data = fetch_bbox(iid, ICE_BBOX, ICE_PARAMS)
-        sea_data = fetch_bbox(iid, SEA_BBOX, SEA_PARAMS)
-        cache[iid] = {
-            "ice": parse_covjson(ice_data, ICE_PARAMS),
-            "sea": parse_covjson(sea_data, SEA_PARAMS),
-        }
+        cache[iid] = {"ice": {}, "sea": {}}
+        print(f"Fetching point data for {iid}")
+
+        for p in ICE_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+            times, values = parse_coverage_series(data, ICE_PARAMS)
+            cache[iid]["ice"][p["name"]] = {"times": times, "values": values}
+
+        for p in SEA_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+            times, values = parse_coverage_series(data, SEA_PARAMS)
+            cache[iid]["sea"][p["name"]] = {"times": times, "values": values}
+
     return cache
 
 
 def build_time_pool(cache):
     pool = []
     for iid, block in cache.items():
-        times = block["ice"][0]
+        times = block["ice"]["core"]["times"]
         for t in times:
             pool.append(
                 {
@@ -292,9 +205,11 @@ def build_time_pool(cache):
                     "dt": parse_iso(t),
                 }
             )
+
     uniq = {}
     for item in pool:
         uniq[(item["instanceId"], item["validTime"])] = item
+
     return sorted(uniq.values(), key=lambda x: x["dt"])
 
 
@@ -312,16 +227,20 @@ def choose_trend_targets(pool):
     for key in ["now", "m6", "m12"]:
         best = None
         best_diff = None
+
         for c in pool:
             k = (c["instanceId"], c["validTime"])
             if k in used:
                 continue
+
             diff_h = abs((c["dt"] - targets[key]).total_seconds()) / 3600.0
             if diff_h > TIME_TOLERANCE_HOURS:
                 continue
+
             if best is None or diff_h < best_diff:
                 best = c
                 best_diff = diff_h
+
         chosen[key] = best
         if best is not None:
             used.add((best["instanceId"], best["validTime"]))
@@ -335,6 +254,87 @@ def choose_trend_targets(pool):
         status = "insufficient_distinct_steps"
 
     return chosen, status
+
+
+def extract_point_values(cache, instance_id, point_type, point_name, valid_time):
+    block = cache[instance_id][point_type][point_name]
+    times = block["times"]
+    values = block["values"]
+
+    try:
+        idx = times.index(valid_time)
+    except ValueError:
+        return None
+
+    out = {}
+    for k, arr in values.items():
+        out[k] = arr[idx] if idx < len(arr) else None
+    return out
+
+
+def fields_for(cache, choice):
+    if choice is None:
+        return None
+
+    iid = choice["instanceId"]
+    vt = choice["validTime"]
+
+    # is
+    ice_pressures = []
+    ice_temps = []
+    ice_winds = []
+
+    for name in ["core", "corridor"]:
+        vals = extract_point_values(cache, iid, "ice", name, vt)
+        if not vals:
+            continue
+
+        p = vals.get("pressure-sealevel")
+        t = vals.get("temperature-2m")
+        w = vals.get("wind-speed-100m")
+
+        if p is not None:
+            ice_pressures.append(p / 100.0)
+        if t is not None:
+            ice_temps.append(kelvin_to_celsius(t))
+        if w is not None:
+            ice_winds.append(w)
+
+    # strait
+    sea_candidates = []
+    sea_temps = []
+
+    for name in ["SC", "C", "N"]:
+        vals = extract_point_values(cache, iid, "sea", name, vt)
+        if not vals:
+            continue
+
+        p = vals.get("pressure-sealevel")
+        t = vals.get("temperature-2m")
+
+        if p is not None:
+            sea_candidates.append((p / 100.0, name))
+        if t is not None:
+            sea_temps.append(kelvin_to_celsius(t))
+
+    if not ice_pressures or not sea_candidates:
+        return None
+
+    ice_pressure = 0.55 * ice_pressures[0] + 0.45 * ice_pressures[-1] if len(ice_pressures) == 2 else ice_pressures[0]
+    ice_wind = 0.55 * ice_winds[0] + 0.45 * ice_winds[-1] if len(ice_winds) == 2 else (ice_winds[0] if ice_winds else 0.0)
+    sea_pressure, sector = min(sea_candidates, key=lambda x: x[0])
+
+    return {
+        "icePressure": ice_pressure,
+        "iceTempC": avg(ice_temps),
+        "iceWind": ice_wind,
+        "seaPressure": sea_pressure,
+        "seaTempC": avg(sea_temps),
+        "sector": sector,
+        "usedReservoirPoints": len(ice_pressures),
+        "usedIcePoints": len(ice_temps),
+        "usedSeaPoints": len(sea_candidates),
+    }
 
 
 def history_prev(history, hours_back):
@@ -375,59 +375,19 @@ def main():
     instances = list_instances()
     latest = instances[-1]
 
-    cache = collect_all_bbox_data(instances)
-
-    # Finn grid-indekser én gang per bbox
-    ice_lat = cache[latest]["ice"][3]["latitude"]
-    ice_lon = cache[latest]["ice"][3]["longitude"]
-    sea_lat = cache[latest]["sea"][3]["latitude"]
-    sea_lon = cache[latest]["sea"][3]["longitude"]
-
-    ice_target_indices = pick_target_indices(ice_lat, ice_lon, ICE_TARGETS)
-    sea_target_indices = pick_target_indices(sea_lat, sea_lon, SEA_TARGETS)
-
+    cache = collect_all_point_data(instances)
     pool = build_time_pool(cache)
     chosen, trend_status = choose_trend_targets(pool)
 
     if chosen["now"] is None:
-        raise RuntimeError("Fant ikke gyldig now-tid i bbox-data.")
+        raise RuntimeError("Fant ikke gyldig now-tid i DMI-data.")
 
-    def fields_for(choice):
-        if choice is None:
-            return None
-        iid = choice["instanceId"]
-        vt = choice["validTime"]
-
-        ice_times = cache[iid]["ice"][0]
-        sea_times = cache[iid]["sea"][0]
-
-        ti_ice = nearest_time_index(ice_times, parse_iso(vt))
-        ti_sea = nearest_time_index(sea_times, parse_iso(vt))
-
-        ice_fields = extract_fields_at(cache[iid]["ice"], ice_target_indices, ti_ice, "ice")
-        sea_fields = extract_fields_at(cache[iid]["sea"], sea_target_indices, ti_sea, "sea")
-
-        if ice_fields is None or sea_fields is None:
-            return None
-
-        return {
-            "icePressure": ice_fields["pressure"],
-            "iceTempC": ice_fields["tempC"],
-            "iceWind": ice_fields["wind"],
-            "seaPressure": sea_fields["pressure"],
-            "seaTempC": sea_fields["tempC"],
-            "sector": sea_fields["sector"],
-            "usedReservoirPoints": ice_fields["count"],
-            "usedIcePoints": ice_fields["count"],
-            "usedSeaPoints": sea_fields["count"],
-        }
-
-    now_fields = fields_for(chosen["now"])
-    m6_fields = fields_for(chosen["m6"])
-    m12_fields = fields_for(chosen["m12"])
+    now_fields = fields_for(cache, chosen["now"])
+    m6_fields = fields_for(cache, chosen["m6"])
+    m12_fields = fields_for(cache, chosen["m12"])
 
     if now_fields is None:
-        raise RuntimeError("Kunne ikke lese now-felter fra bbox-data.")
+        raise RuntimeError("Kunne ikke lese now-felter fra point-data.")
 
     ice_pressure = now_fields["icePressure"]
     ice_temp_c = now_fields["iceTempC"]
@@ -442,6 +402,7 @@ def main():
 
     d6 = (gradient - gradient_m6) if gradient_m6 is not None else 0.0
     d12 = (gradient - gradient_m12) if gradient_m12 is not None else 0.0
+
     sf6 = (m6_fields["seaPressure"] - sea_pressure) if m6_fields else 0.0
     sf12 = (m12_fields["seaPressure"] - sea_pressure) if m12_fields else 0.0
 
@@ -487,6 +448,7 @@ def main():
     cold_72_mean = avg(cold_72)
     dT_72_mean = avg(dT_72)
 
+    # Reservoir
     reservoir = 100 * (
         0.55 * norm(ice_anom_72_mean, -12, 12)
         + 0.20 * norm(ice_pressure_anom_now, -12, 12)
@@ -497,6 +459,7 @@ def main():
     if ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
+    # Coupling
     sector_score = {"SC": 90, "C": 75, "N": 40}.get(sector, 25)
     coupling = 100 * (
         0.60 * (sector_score / 100.0)
@@ -505,6 +468,7 @@ def main():
     )
     coupling = clamp(coupling, 0, 100)
 
+    # Katabatisk potensial
     thermal_component = 100 * (
         0.55 * norm(dT_72_mean, 3, 20)
         + 0.30 * norm(cold_72_mean, 5, 25)
@@ -514,6 +478,7 @@ def main():
     reservoir_factor = 0.35 + 0.65 * (reservoir / 100.0)
     katabatic_potential = clamp(thermal_component * reservoir_factor, 0, 100)
 
+    # Trigger
     gboost = gradient_boost(gradient)
     trigger = 100 * (
         0.28 * norm(gradient, 0, 65)
@@ -528,12 +493,14 @@ def main():
     )
     trigger = clamp(trigger, 0, 100)
 
+    # Potential
     potential = clamp(
         potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h),
         0,
         100,
     )
 
+    # Watch
     watch = (
         (reservoir >= 30 or potential >= 45)
         and coupling >= 60
@@ -546,6 +513,7 @@ def main():
         )
     )
 
+    # Risk
     base = 0.58 * trigger + 0.32 * reservoir + 0.10 * potential
     risk = base * (0.60 + 0.40 * (coupling / 100.0))
 
