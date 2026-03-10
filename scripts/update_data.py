@@ -126,7 +126,7 @@ def list_instances():
     if not ids:
         raise RuntimeError("Fant ingen DMI instanceId-er.")
 
-    # bare siste 3 kjøringer
+    # Bare siste 3 kjøringer
     return ids[-3:]
 
 
@@ -148,49 +148,6 @@ def parse_coverage_series(data, parameter_names):
     ranges = data.get("ranges", {})
     values = {p: ranges.get(p, {}).get("values", []) for p in parameter_names}
     return times, values
-
-
-def nearest_time_index(times, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
-    if not times:
-        return None
-
-    parsed = [parse_iso(t) for t in times]
-    best_i = None
-    best_diff = None
-
-    for i, dt in enumerate(parsed):
-        diff_h = abs((dt - target_dt).total_seconds()) / 3600.0
-        if best_diff is None or diff_h < best_diff:
-            best_i = i
-            best_diff = diff_h
-
-    if best_diff is None or best_diff > tolerance_hours:
-        return None
-    return best_i
-
-
-def collect_all_point_data(instances):
-    """
-    Ett kall per punkt per instance, flere parametre i samme kall.
-    cache[instance]["ice"/"sea"][point_name] = {"times": [...], "values": {...}}
-    """
-    cache = {}
-
-    for iid in instances:
-        cache[iid] = {"ice": {}, "sea": {}}
-        print(f"Fetching point data for {iid}")
-
-        for p in ICE_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
-            times, values = parse_coverage_series(data, ICE_PARAMS)
-            cache[iid]["ice"][p["name"]] = {"times": times, "values": values}
-
-        for p in SEA_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
-            times, values = parse_coverage_series(data, SEA_PARAMS)
-            cache[iid]["sea"][p["name"]] = {"times": times, "values": values}
-
-    return cache
 
 
 def build_time_pool(cache):
@@ -256,6 +213,29 @@ def choose_trend_targets(pool):
     return chosen, status
 
 
+def collect_all_point_data(instances):
+    """
+    Ett kall per punkt per instance, flere parametre i samme kall.
+    """
+    cache = {}
+
+    for iid in instances:
+        cache[iid] = {"ice": {}, "sea": {}}
+        print(f"Fetching point data for {iid}")
+
+        for p in ICE_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+            times, values = parse_coverage_series(data, ICE_PARAMS)
+            cache[iid]["ice"][p["name"]] = {"times": times, "values": values}
+
+        for p in SEA_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+            times, values = parse_coverage_series(data, SEA_PARAMS)
+            cache[iid]["sea"][p["name"]] = {"times": times, "values": values}
+
+    return cache
+
+
 def extract_point_values(cache, instance_id, point_type, point_name, valid_time):
     block = cache[instance_id][point_type][point_name]
     times = block["times"]
@@ -279,7 +259,6 @@ def fields_for(cache, choice):
     iid = choice["instanceId"]
     vt = choice["validTime"]
 
-    # is
     ice_pressures = []
     ice_temps = []
     ice_winds = []
@@ -300,7 +279,6 @@ def fields_for(cache, choice):
         if w is not None:
             ice_winds.append(w)
 
-    # strait
     sea_candidates = []
     sea_temps = []
 
@@ -320,8 +298,14 @@ def fields_for(cache, choice):
     if not ice_pressures or not sea_candidates:
         return None
 
-    ice_pressure = 0.55 * ice_pressures[0] + 0.45 * ice_pressures[-1] if len(ice_pressures) == 2 else ice_pressures[0]
-    ice_wind = 0.55 * ice_winds[0] + 0.45 * ice_winds[-1] if len(ice_winds) == 2 else (ice_winds[0] if ice_winds else 0.0)
+    ice_pressure = (
+        0.55 * ice_pressures[0] + 0.45 * ice_pressures[-1]
+        if len(ice_pressures) == 2 else ice_pressures[0]
+    )
+    ice_wind = (
+        0.55 * ice_winds[0] + 0.45 * ice_winds[-1]
+        if len(ice_winds) == 2 else (ice_winds[0] if ice_winds else 0.0)
+    )
     sea_pressure, sector = min(sea_candidates, key=lambda x: x[0])
 
     return {
@@ -448,7 +432,6 @@ def main():
     cold_72_mean = avg(cold_72)
     dT_72_mean = avg(dT_72)
 
-    # Reservoir
     reservoir = 100 * (
         0.55 * norm(ice_anom_72_mean, -12, 12)
         + 0.20 * norm(ice_pressure_anom_now, -12, 12)
@@ -459,7 +442,6 @@ def main():
     if ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
-    # Coupling
     sector_score = {"SC": 90, "C": 75, "N": 40}.get(sector, 25)
     coupling = 100 * (
         0.60 * (sector_score / 100.0)
@@ -468,7 +450,6 @@ def main():
     )
     coupling = clamp(coupling, 0, 100)
 
-    # Katabatisk potensial
     thermal_component = 100 * (
         0.55 * norm(dT_72_mean, 3, 20)
         + 0.30 * norm(cold_72_mean, 5, 25)
@@ -478,7 +459,6 @@ def main():
     reservoir_factor = 0.35 + 0.65 * (reservoir / 100.0)
     katabatic_potential = clamp(thermal_component * reservoir_factor, 0, 100)
 
-    # Trigger
     gboost = gradient_boost(gradient)
     trigger = 100 * (
         0.28 * norm(gradient, 0, 65)
@@ -493,14 +473,12 @@ def main():
     )
     trigger = clamp(trigger, 0, 100)
 
-    # Potential
     potential = clamp(
         potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h),
         0,
         100,
     )
 
-    # Watch
     watch = (
         (reservoir >= 30 or potential >= 45)
         and coupling >= 60
@@ -513,7 +491,6 @@ def main():
         )
     )
 
-    # Risk
     base = 0.58 * trigger + 0.32 * reservoir + 0.10 * potential
     risk = base * (0.60 + 0.40 * (coupling / 100.0))
 
@@ -605,4 +582,31 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        fallback = load_json(
+            DATA_FILE,
+            {
+                "meta": {},
+                "inputs": {},
+                "scores": {},
+                "derived": {},
+                "output": {},
+            },
+        )
+        fallback["meta"] = {
+            "source": "DMI HARMONIE",
+            "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "location": LOCATION_NAME,
+            "model": COLLECTION,
+            "forecastInfo": f"Update failed: {type(e).__name__}",
+            "instanceId": "-",
+        }
+        fallback["derived"] = fallback.get("derived", {})
+        fallback["derived"]["trendDataStatus"] = f"error: {type(e).__name__}"
+        fallback["output"] = fallback.get("output", {})
+        fallback["output"]["phase"] = "ERROR"
+        save_json(DATA_FILE, fallback)
+        print("Script failed:", repr(e))
+        raise
