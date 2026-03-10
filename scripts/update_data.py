@@ -3,7 +3,10 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import requests
+try:
+    import requests
+except ImportError:
+    raise RuntimeError("Python package 'requests' is not installed on runner.")
 
 BASE_URL = "https://opendataapi.dmi.dk/v1/forecastedr"
 COLLECTION = "harmonie_ig_sf"
