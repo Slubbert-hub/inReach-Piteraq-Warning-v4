@@ -102,8 +102,11 @@
       font-size:18px;
       font-weight:800;
       color:#fff;
+      background:#16a34a;
     }
-    .btn-green{ background:#16a34a; }
+    .btn-blue{
+      background:#3b82f6;
+    }
     .statuswarn{
       color:#fbbf24;
       font-weight:700;
@@ -131,7 +134,7 @@
       <div class="small" id="qualityFlagsLine"></div>
       <div class="small">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
       <div class="btnrow">
-        <button class="btn btn-green" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
+        <button class="btn" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
       </div>
       <div class="small" id="refreshStatus"></div>
     </div>
@@ -152,7 +155,7 @@
         <div class="label">inReach message</div>
         <div class="messagebox" id="messageBox">-</div>
         <div class="btnrow">
-          <button class="btn" style="background:#3b82f6;" onclick="copyMsg()">Kopier melding</button>
+          <button class="btn btn-blue" onclick="copyMsg()">Kopier melding</button>
         </div>
       </div>
 
@@ -303,12 +306,10 @@
 
     function renderQualityFlags(flags) {
       const el = document.getElementById("qualityFlagsLine");
-
       if (!Array.isArray(flags) || flags.length === 0) {
         el.innerHTML = "";
         return;
       }
-
       el.innerHTML = `<span class="statuswarn">Datakvalitet: ${flags.join(", ")}</span>`;
     }
 
@@ -324,12 +325,9 @@
         }
 
         const r = await fetch("data.json?" + Date.now(), { cache: "no-store" });
-        if (!r.ok) {
-          throw new Error("HTTP " + r.status);
-        }
+        if (!r.ok) throw new Error("HTTP " + r.status);
 
         const d = await r.json();
-
         const meta = d.meta || {};
         const inputs = d.inputs || {};
         const scores = d.scores || {};
@@ -371,22 +369,22 @@
         document.getElementById("sf6Line").innerText = fmtSigned(inputs.sf6, " hPa");
         document.getElementById("sf12Line").innerText = fmtSigned(inputs.sf12, " hPa");
 
+        const accSuffix = derived.accUncertain ? "?" : "";
+        const accG = hasNumber(derived.accG) ? Number(derived.accG).toFixed(1) : "mangler data";
+        const accS = hasNumber(derived.accS) ? Number(derived.accS).toFixed(1) : "mangler data";
         document.getElementById("accLine").innerText =
-          `AG ${fmt(derived.accG)} · AS ${fmt(derived.accS)}`;
+          `AG ${accG}${accSuffix} · AS ${accS}${accSuffix}`;
 
         document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind, " m/s");
         document.getElementById("iceWindSub").innerText =
           `trend 6t ${fmtSigned(inputs.iceWindTrend6h, " m/s")}`;
 
         document.getElementById("dtLine").innerText = fmt(inputs.coastIceDeltaT, " °C");
-
-        document.getElementById("katabaticLine").innerText =
-          fmtInt(derived.katabaticPotential, "/100");
+        document.getElementById("katabaticLine").innerText = fmtInt(derived.katabaticPotential, "/100");
 
         const cold72Text = hasNumber(derived.coldSupport72h)
           ? `cold72 ${fmt(derived.coldSupport72h, " °C")}`
           : "cold72 mangler data";
-
         document.getElementById("katabaticSub").innerText = cold72Text;
 
         if (manual) {
@@ -397,9 +395,7 @@
         document.getElementById("trendStatusLine").innerHTML =
           `<span class="statuserror">${String(err)}</span>`;
         document.getElementById("qualityFlagsLine").innerHTML = "";
-        if (status) {
-          status.innerText = "Feil ved lasting av data.";
-        }
+        if (status) status.innerText = "Feil ved lasting av data.";
       } finally {
         if (manual && btn) {
           btn.disabled = false;
