@@ -1,53 +1,67 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-11 00:17 UTC",
+    "updatedAt": "2026-03-11 01:02 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Update failed: TypeError",
-    "instanceId": "-"
+    "forecastInfo": "Latest available forecast step",
+    "instanceId": "2026-03-10T210000Z"
   },
   "inputs": {
-    "icePressure": 0,
-    "seaPressure": 0,
-    "gradient": 0,
-    "d6": 0,
-    "d12": 0,
-    "sf6": 0,
-    "sf12": 0,
-    "iceWind": 0,
-    "iceWindTrend6h": 0,
-    "coastIceDeltaT": 0
+    "icePressure": 993.6,
+    "seaPressure": 982.0,
+    "gradient": 11.5,
+    "d6": -2.1,
+    "d12": -8.0,
+    "sf6": -2.7,
+    "sf12": -4.9,
+    "iceWind": 10.9,
+    "iceWindTrend6h": 3.2,
+    "coastIceDeltaT": 36.2
   },
   "scores": {
-    "reservoir": 0,
-    "trigger": 0,
-    "coupling": 0,
-    "potential": 0,
-    "risk": 0
+    "reservoir": 7,
+    "trigger": 12,
+    "coupling": 43,
+    "potential": 17,
+    "risk": 8
   },
   "derived": {
     "watch": false,
-    "sector": "?",
-    "icePressureAnomNow": 0,
-    "icePressureAnom72hMean": 0,
-    "icePressureTrend24h": 0,
-    "icePressureTrend72h": 0,
-    "coldSupport72h": 0,
-    "katabaticPotential": 0,
-    "seaLowDepth": 0,
-    "gradientBoost": 0,
-    "accG": 0,
-    "accS": 0,
-    "trendDataStatus": "error: TypeError",
-    "selectedTimes": {},
-    "usedReservoirPoints": 0,
-    "usedIcePoints": 0,
-    "usedSeaPoints": 0
+    "sector": "N",
+    "icePressureAnomNow": -19.7,
+    "icePressureAnom72hMean": -19.7,
+    "icePressureTrend24h": 0.0,
+    "icePressureTrend72h": 0.0,
+    "coldSupport72h": 37.1,
+    "katabaticPotential": 40,
+    "seaLowDepth": 18.0,
+    "gradientBoost": 0.0,
+    "accG": 3.8,
+    "accS": -0.5,
+    "trendDataStatus": "ok",
+    "qualityFlags": [],
+    "selectedTimes": {
+      "now": {
+        "instanceId": "2026-03-10T150000Z",
+        "validTime": "2026-03-11T01:00:00.000Z"
+      },
+      "m6": {
+        "instanceId": "2026-03-10T150000Z",
+        "validTime": "2026-03-10T19:00:00.000Z"
+      },
+      "m12": {
+        "instanceId": "2026-03-10T150000Z",
+        "validTime": "2026-03-10T15:00:00.000Z"
+      }
+    },
+    "usedReservoirPoints": 2,
+    "usedIcePoints": 2,
+    "usedSeaPoints": 3
   },
   "output": {
     "level": "GRN",
-    "phase": "ERROR",
-    "message": "TASIILAQ ERROR DMI TypeError"
+    "phase": "PITERAQ LOW",
+    "message": "TASIILAQ GRN 12-24T RES7 TRG12 CPL43 ICE993.6 SEA982.0 GR11.5 d6-2.1 d12-8.0 SF6-2.7 SF12-4.9 DT36 AG4 AS0"
   }
 }

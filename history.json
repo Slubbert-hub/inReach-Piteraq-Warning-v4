@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "t": "2026-03-11T01:02:19.894873+00:00",
+    "icePressure": 993.6,
+    "seaPressure": 982.0,
+    "gradient": 11.5,
+    "iceWind": 10.9,
+    "icePressureAnomNow": -19.7,
+    "coldSupportNow": 37.1,
+    "dTCoastIceNow": 36.2,
+    "sector": "N"
+  }
+]
