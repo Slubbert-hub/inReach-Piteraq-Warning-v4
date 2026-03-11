@@ -1,7 +1,7 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-11 14:38 UTC",
+    "updatedAt": "2026-03-11 15:11 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
@@ -33,7 +33,7 @@
     "icePressureAnom72hMean": -20.1,
     "icePressureTrend24h": 0.0,
     "icePressureTrend72h": 0.0,
-    "coldSupport72h": 35.1,
+    "coldSupport72h": 34.8,
     "katabaticPotential": 39,
     "seaLowDepth": 20.3,
     "gradientBoost": 0.0,
