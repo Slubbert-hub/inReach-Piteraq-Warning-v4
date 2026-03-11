@@ -103,7 +103,6 @@
       font-weight:800;
       color:#fff;
     }
-    .btn-blue{ background:#3b82f6; }
     .btn-green{ background:#16a34a; }
     .statuswarn{
       color:#fbbf24;
@@ -111,6 +110,10 @@
     }
     .statusok{
       color:#86efac;
+      font-weight:700;
+    }
+    .statuserror{
+      color:#fca5a5;
       font-weight:700;
     }
     .sectionspace{
@@ -125,10 +128,10 @@
       <h1>Piteraq Monitor</h1>
       <div class="topmeta" id="metaLine">Laster data ...</div>
       <div class="small" id="trendStatusLine"></div>
+      <div class="small" id="qualityFlagsLine"></div>
       <div class="small">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
       <div class="btnrow">
         <button class="btn btn-green" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
-        <button class="btn btn-blue" onclick="hardRefresh()">Oppdater side</button>
       </div>
       <div class="small" id="refreshStatus"></div>
     </div>
@@ -149,7 +152,7 @@
         <div class="label">inReach message</div>
         <div class="messagebox" id="messageBox">-</div>
         <div class="btnrow">
-          <button class="btn btn-blue" onclick="copyMsg()">Kopier melding</button>
+          <button class="btn" style="background:#3b82f6;" onclick="copyMsg()">Kopier melding</button>
         </div>
       </div>
 
@@ -247,14 +250,24 @@
   </div>
 
   <script>
+    function hasNumber(x) {
+      return typeof x === "number" && Number.isFinite(x);
+    }
+
     function fmt(x, suffix = "") {
-      if (x === undefined || x === null || Number.isNaN(Number(x))) return "-";
+      if (!hasNumber(x)) return "mangler data";
       return Number(x).toFixed(1) + suffix;
     }
 
     function fmtInt(x, suffix = "") {
-      if (x === undefined || x === null || Number.isNaN(Number(x))) return "-";
+      if (!hasNumber(x)) return "mangler data";
       return Math.round(Number(x)) + suffix;
+    }
+
+    function fmtSigned(x, suffix = "") {
+      if (!hasNumber(x)) return "mangler data";
+      const n = Number(x);
+      return `${n >= 0 ? "+" : ""}${n.toFixed(1)}${suffix}`;
     }
 
     function copyMsg() {
@@ -263,12 +276,40 @@
 
     function setRiskBadge(level) {
       const badge = document.getElementById("riskBadge");
-      badge.className = "badge " + level;
+      badge.className = "badge " + (level || "");
       badge.innerText = level || "-";
     }
 
-    function hardRefresh() {
-      window.location.reload();
+    function renderTrendStatus(trendStatus) {
+      const el = document.getElementById("trendStatusLine");
+
+      if (!trendStatus || trendStatus === "-") {
+        el.innerHTML = "";
+        return;
+      }
+
+      if (trendStatus === "ok") {
+        el.innerHTML = `<span class="statusok">Trendstatus: OK</span>`;
+        return;
+      }
+
+      if (String(trendStatus).startsWith("error:")) {
+        el.innerHTML = `<span class="statuserror">Trendstatus: ${trendStatus}</span>`;
+        return;
+      }
+
+      el.innerHTML = `<span class="statuswarn">Trendstatus: ${trendStatus}</span>`;
+    }
+
+    function renderQualityFlags(flags) {
+      const el = document.getElementById("qualityFlagsLine");
+
+      if (!Array.isArray(flags) || flags.length === 0) {
+        el.innerHTML = "";
+        return;
+      }
+
+      el.innerHTML = `<span class="statuswarn">Datakvalitet: ${flags.join(", ")}</span>`;
     }
 
     async function loadData(manual = false) {
@@ -283,7 +324,9 @@
         }
 
         const r = await fetch("data.json?" + Date.now(), { cache: "no-store" });
-        if (!r.ok) throw new Error("HTTP " + r.status);
+        if (!r.ok) {
+          throw new Error("HTTP " + r.status);
+        }
 
         const d = await r.json();
 
@@ -296,13 +339,8 @@
         document.getElementById("metaLine").innerText =
           `${meta.location || "-"} · oppdatert ${meta.updatedAt || "-"} · modell ${meta.model || "-"}`;
 
-        const trendStatus = derived.trendDataStatus || "-";
-        const trendEl = document.getElementById("trendStatusLine");
-        if (trendStatus === "ok") {
-          trendEl.innerHTML = `<span class="statusok">Trendstatus: OK</span>`;
-        } else {
-          trendEl.innerHTML = `<span class="statuswarn">Trendstatus: ${trendStatus}</span>`;
-        }
+        renderTrendStatus(derived.trendDataStatus || "-");
+        renderQualityFlags(derived.qualityFlags || []);
 
         document.getElementById("riskLine").innerText =
           `${output.level || "-"} · ${fmtInt(scores.risk, "/100")}`;
@@ -319,42 +357,49 @@
 
         document.getElementById("icePressureLine").innerText = fmt(inputs.icePressure, " hPa");
         document.getElementById("icePressureSub").innerText =
-          `vs normal ${fmt(derived.icePressureAnomNow, " hPa")}`;
+          `vs normal ${fmtSigned(derived.icePressureAnomNow, " hPa")}`;
 
         document.getElementById("seaPressureLine").innerText = fmt(inputs.seaPressure, " hPa");
-        document.getElementById("sectorLine").innerText = `sektor ${derived.sector || "-"}`;
+        document.getElementById("sectorLine").innerText = `sektor ${derived.sector || "?"}`;
 
         document.getElementById("gradientLine").innerText = fmt(inputs.gradient, " hPa");
         document.getElementById("gradientSub").innerText =
-          `d6 ${fmt(inputs.d6, " hPa")} · SF6 ${fmt(inputs.sf6, " hPa")}`;
+          `d6 ${fmtSigned(inputs.d6, " hPa")} · SF6 ${fmtSigned(inputs.sf6, " hPa")}`;
 
-        document.getElementById("d6Line").innerText = fmt(inputs.d6, " hPa");
-        document.getElementById("d12Line").innerText = fmt(inputs.d12, " hPa");
-
-        document.getElementById("sf6Line").innerText = fmt(inputs.sf6, " hPa");
-        document.getElementById("sf12Line").innerText = fmt(inputs.sf12, " hPa");
+        document.getElementById("d6Line").innerText = fmtSigned(inputs.d6, " hPa");
+        document.getElementById("d12Line").innerText = fmtSigned(inputs.d12, " hPa");
+        document.getElementById("sf6Line").innerText = fmtSigned(inputs.sf6, " hPa");
+        document.getElementById("sf12Line").innerText = fmtSigned(inputs.sf12, " hPa");
 
         document.getElementById("accLine").innerText =
           `AG ${fmt(derived.accG)} · AS ${fmt(derived.accS)}`;
 
         document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind, " m/s");
         document.getElementById("iceWindSub").innerText =
-          `trend 6t ${fmt(inputs.iceWindTrend6h, " m/s")}`;
+          `trend 6t ${fmtSigned(inputs.iceWindTrend6h, " m/s")}`;
 
         document.getElementById("dtLine").innerText = fmt(inputs.coastIceDeltaT, " °C");
 
         document.getElementById("katabaticLine").innerText =
           fmtInt(derived.katabaticPotential, "/100");
-        document.getElementById("katabaticSub").innerText =
-          `cold72 ${fmt(derived.coldSupport72h, " °C")}`;
+
+        const cold72Text = hasNumber(derived.coldSupport72h)
+          ? `cold72 ${fmt(derived.coldSupport72h, " °C")}`
+          : "cold72 mangler data";
+
+        document.getElementById("katabaticSub").innerText = cold72Text;
 
         if (manual) {
           status.innerText = `Lastet: ${meta.updatedAt || "-"}`;
         }
       } catch (err) {
         document.getElementById("metaLine").innerText = "Kunne ikke laste data.json";
-        document.getElementById("trendStatusLine").innerText = String(err);
-        if (status) status.innerText = "Feil ved lasting av data.";
+        document.getElementById("trendStatusLine").innerHTML =
+          `<span class="statuserror">${String(err)}</span>`;
+        document.getElementById("qualityFlagsLine").innerHTML = "";
+        if (status) {
+          status.innerText = "Feil ved lasting av data.";
+        }
       } finally {
         if (manual && btn) {
           btn.disabled = false;
