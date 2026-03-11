@@ -6,8 +6,8 @@ from pathlib import Path
 
 import requests
 
-BASE_URL = "https://opendataapi.dmi.dk/v1/forecastedr"
-COLLECTION = "harmonie_ig_sf"
+BASE = "https://opendataapi.dmi.dk/v1/forecastedr"
+COL = "harmonie_ig_sf"
 
 LOCATION_NAME = "TASIILAQ"
 DATA_FILE = Path("data.json")
@@ -16,21 +16,25 @@ HISTORY_FILE = Path("history.json")
 REQUEST_TIMEOUT = 45
 REQUEST_SLEEP = 1.2
 REQUEST_RETRIES = 5
-TIME_TOLERANCE_HOURS = 2.5
+TIME_TOLERANCE_HOURS = 2.75
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
-# 2 ispunkter
+# Operativ piteraq-korridor på isen:
+# source = mer oppstrøms reservoir/lading
+# mid    = midtre drenerings-/akselerasjonssone
+# mouth  = nær utløpet mot Ammassalik/Sermilik
 ICE_POINTS = [
-    {"name": "core", "lon": -39.5, "lat": 69.3},
-    {"name": "corridor", "lon": -41.5, "lat": 68.1},
+    {"name": "source", "lon": -42.4, "lat": 69.0},
+    {"name": "mid",    "lon": -41.3, "lat": 68.6},
+    {"name": "mouth",  "lon": -40.3, "lat": 68.2},
 ]
 
-# 3 punkter i Danmarkstredet
+# Sør–nord korridor i Danmark-stredet
 SEA_POINTS = [
-    {"name": "SC", "lon": -29.0, "lat": 65.0},
-    {"name": "C", "lon": -27.0, "lat": 66.0},
-    {"name": "N", "lon": -24.8, "lat": 67.0},
+    {"name": "S", "lon": -29.8, "lat": 65.0},
+    {"name": "C", "lon": -28.3, "lat": 65.9},
+    {"name": "N", "lon": -26.7, "lat": 66.8},
 ]
 
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
@@ -42,13 +46,14 @@ def clamp(x, lo, hi):
 
 
 def norm(x, lo, hi):
-    if hi == lo:
+    if x is None or hi == lo:
         return 0.0
     return clamp((x - lo) / (hi - lo), 0.0, 1.0)
 
 
 def avg(values):
-    return sum(values) / len(values) if values else 0.0
+    vals = [v for v in values if is_num(v)]
+    return sum(vals) / len(vals) if vals else None
 
 
 def kelvin_to_celsius(k):
@@ -57,6 +62,18 @@ def kelvin_to_celsius(k):
 
 def parse_iso(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def is_num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def safe_get(arr, idx):
+    if not isinstance(arr, list):
+        return None
+    if idx < 0 or idx >= len(arr):
+        return None
+    return arr[idx]
 
 
 def load_json(path, default):
@@ -72,16 +89,17 @@ def save_json(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def is_num(x):
-    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+def fmt_msg_num(x, digits=1, signed=False, none_text="NA"):
+    if not is_num(x):
+        return none_text
+    return f"{x:+.{digits}f}" if signed else f"{x:.{digits}f}"
 
 
-def safe_get(arr, idx):
-    if not isinstance(arr, list):
-        return None
-    if idx < 0 or idx >= len(arr):
-        return None
-    return arr[idx]
+def compact_score_tag(prefix, value, uncertain=False):
+    if not is_num(value):
+        return f"{prefix}?"
+    iv = int(round(value))
+    return f"{prefix}{iv}{'?' if uncertain else ''}"
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
@@ -123,7 +141,7 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
 
 
 def list_instances():
-    url = f"{BASE_URL}/collections/{COLLECTION}/instances"
+    url = f"{BASE}/collections/{COL}/instances"
     data = get_json(url)
     ids = []
 
@@ -152,12 +170,11 @@ def list_instances():
     ids = sorted(set(ids))
     if not ids:
         raise RuntimeError("Fant ingen DMI instanceId-er.")
-
     return ids[-3:]
 
 
 def fetch_position(instance_id, lon, lat, parameter_names):
-    url = f"{BASE_URL}/collections/{COLLECTION}/instances/{instance_id}/position"
+    url = f"{BASE}/collections/{COL}/instances/{instance_id}/position"
     params = {
         "coords": f"POINT({lon} {lat})",
         "parameter-name": ",".join(parameter_names),
@@ -176,27 +193,39 @@ def parse_coverage_series(data, parameter_names):
     return times, values
 
 
+def collect_all_point_data(instances):
+    cache = {}
+    for iid in instances:
+        cache[iid] = {"ice": {}, "sea": {}}
+        print(f"Fetching point data for {iid}")
+
+        for p in ICE_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+            times, values = parse_coverage_series(data, ICE_PARAMS)
+            cache[iid]["ice"][p["name"]] = {"times": times, "values": values, "lon": p["lon"], "lat": p["lat"]}
+
+        for p in SEA_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+            times, values = parse_coverage_series(data, SEA_PARAMS)
+            cache[iid]["sea"][p["name"]] = {"times": times, "values": values, "lon": p["lon"], "lat": p["lat"]}
+
+    return cache
+
+
 def build_time_pool(cache):
     pool = []
     for iid, block in cache.items():
-        times = block["ice"]["core"]["times"]
+        times = block["ice"]["source"]["times"]
         for t in times:
-            pool.append(
-                {
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                }
-            )
+            pool.append({"instanceId": iid, "validTime": t, "dt": parse_iso(t)})
 
     uniq = {}
     for item in pool:
         uniq[(item["instanceId"], item["validTime"])] = item
-
     return sorted(uniq.values(), key=lambda x: x["dt"])
 
 
-def choose_trend_targets(pool):
+def choose_nearest_distinct(pool):
     now_dt = datetime.now(timezone.utc)
     targets = {
         "now": now_dt,
@@ -239,26 +268,6 @@ def choose_trend_targets(pool):
     return chosen, status
 
 
-def collect_all_point_data(instances):
-    cache = {}
-
-    for iid in instances:
-        cache[iid] = {"ice": {}, "sea": {}}
-        print(f"Fetching point data for {iid}")
-
-        for p in ICE_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
-            times, values = parse_coverage_series(data, ICE_PARAMS)
-            cache[iid]["ice"][p["name"]] = {"times": times, "values": values}
-
-        for p in SEA_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
-            times, values = parse_coverage_series(data, SEA_PARAMS)
-            cache[iid]["sea"][p["name"]] = {"times": times, "values": values}
-
-    return cache
-
-
 def extract_point_values(cache, instance_id, point_type, point_name, valid_time):
     block = cache[instance_id][point_type][point_name]
     times = block["times"]
@@ -275,6 +284,52 @@ def extract_point_values(cache, instance_id, point_type, point_name, valid_time)
     return out
 
 
+def weighted_mean(vals, weights):
+    pairs = [(v, w) for v, w in zip(vals, weights) if is_num(v)]
+    if not pairs:
+        return None
+    sw = sum(w for _, w in pairs)
+    if sw == 0:
+        return None
+    return sum(v * w for v, w in pairs) / sw
+
+
+def centroid_low(candidates):
+    """
+    candidates: [{"name","pressure","lon","lat"}]
+    Returnerer:
+      sea_pressure_centroid
+      centroid_lon
+      centroid_lat
+      sector (nærmeste sjøpunktnavn til sentroid)
+    """
+    valid = [c for c in candidates if is_num(c.get("pressure"))]
+    if not valid:
+        return None, None, None, None
+
+    # Vekt lavere trykk sterkere. Bruk avvik fra høyeste trykk i utvalget.
+    pmax = max(c["pressure"] for c in valid)
+    weights = []
+    for c in valid:
+        w = max(0.1, pmax - c["pressure"] + 0.1)
+        weights.append(w)
+
+    sw = sum(weights)
+    clon = sum(c["lon"] * w for c, w in zip(valid, weights)) / sw
+    clat = sum(c["lat"] * w for c, w in zip(valid, weights)) / sw
+    cp = sum(c["pressure"] * w for c, w in zip(valid, weights)) / sw
+
+    nearest_name = None
+    nearest_d2 = None
+    for c in valid:
+        d2 = (c["lon"] - clon) ** 2 + (c["lat"] - clat) ** 2
+        if nearest_d2 is None or d2 < nearest_d2:
+            nearest_d2 = d2
+            nearest_name = c["name"]
+
+    return cp, clon, clat, nearest_name
+
+
 def fields_for(cache, choice):
     if choice is None:
         return None
@@ -282,106 +337,102 @@ def fields_for(cache, choice):
     iid = choice["instanceId"]
     vt = choice["validTime"]
 
-    ice_pressures = []
-    ice_temps = []
-    ice_winds = []
+    pressure_vals = []
+    temp_vals = []
+    wind_vals = []
+    quality_flags = []
 
-    missing_ice_temp = 0
-    missing_ice_wind = 0
-
-    for name in ["core", "corridor"]:
+    for name in ["source", "mid", "mouth"]:
         vals = extract_point_values(cache, iid, "ice", name, vt)
         if not vals:
+            pressure_vals.append(None)
+            temp_vals.append(None)
+            wind_vals.append(None)
             continue
 
         p = vals.get("pressure-sealevel")
         t = vals.get("temperature-2m")
         w = vals.get("wind-speed-100m")
 
-        if is_num(p):
-            ice_pressures.append(p / 100.0)
+        pressure_vals.append((p / 100.0) if is_num(p) else None)
+        temp_vals.append(kelvin_to_celsius(t) if is_num(t) else None)
+        wind_vals.append(w if is_num(w) else None)
 
-        if is_num(t):
-            ice_temps.append(kelvin_to_celsius(t))
-        else:
-            missing_ice_temp += 1
+    if sum(1 for v in pressure_vals if is_num(v)) == 0:
+        return None
 
-        if is_num(w):
-            ice_winds.append(w)
-        else:
-            missing_ice_wind += 1
+    # Oppstrøms reservoir vektet litt høyere
+    ice_pressure = weighted_mean(pressure_vals, [0.40, 0.35, 0.25])
+
+    # Katabatisk termisk støtte: source + mid viktigst
+    ice_temp_c = weighted_mean(temp_vals, [0.45, 0.35, 0.20])
+
+    # Vind nær kyst/utløp viktigst
+    ice_wind = weighted_mean(wind_vals, [0.20, 0.35, 0.45])
+
+    if not is_num(ice_temp_c):
+        quality_flags.append("missing_ice_temperature_all")
+        ice_temp_c = -20.0
+    elif sum(1 for v in temp_vals if is_num(v)) < 3:
+        quality_flags.append("missing_ice_temperature_partial")
+
+    if not is_num(ice_wind):
+        quality_flags.append("missing_ice_wind_all")
+        ice_wind = 0.0
+    elif sum(1 for v in wind_vals if is_num(v)) < 3:
+        quality_flags.append("missing_ice_wind_partial")
 
     sea_candidates = []
     sea_temps = []
 
-    missing_sea_temp = 0
-
-    for name in ["SC", "C", "N"]:
+    for name in ["S", "C", "N"]:
         vals = extract_point_values(cache, iid, "sea", name, vt)
         if not vals:
             continue
 
         p = vals.get("pressure-sealevel")
         t = vals.get("temperature-2m")
+        meta = cache[iid]["sea"][name]
 
         if is_num(p):
-            sea_candidates.append((p / 100.0, name))
+            sea_candidates.append({
+                "name": name,
+                "pressure": p / 100.0,
+                "lon": meta["lon"],
+                "lat": meta["lat"],
+            })
 
         if is_num(t):
             sea_temps.append(kelvin_to_celsius(t))
-        else:
-            missing_sea_temp += 1
 
-    if not ice_pressures or not sea_candidates:
+    if not sea_candidates:
         return None
 
-    quality_flags = []
+    sea_pressure, centroid_lon, centroid_lat, sector = centroid_low(sea_candidates)
 
-    if not ice_temps:
-        quality_flags.append("missing_ice_temperature_all")
-        # Bruk konservativ fallback, men merk det tydelig
-        ice_temps = [-20.0]
-
-    if not sea_temps:
+    if sea_temps:
+        sea_temp_c = avg(sea_temps)
+        if len(sea_temps) < 3:
+            quality_flags.append("missing_sea_temperature_partial")
+    else:
         quality_flags.append("missing_sea_temperature_all")
-        sea_temps = [0.0]
-
-    if not ice_winds:
-        quality_flags.append("missing_ice_wind_all")
-        ice_winds = [0.0]
-
-    if missing_ice_temp > 0 and "missing_ice_temperature_all" not in quality_flags:
-        quality_flags.append("missing_ice_temperature_partial")
-
-    if missing_sea_temp > 0 and "missing_sea_temperature_all" not in quality_flags:
-        quality_flags.append("missing_sea_temperature_partial")
-
-    if missing_ice_wind > 0 and "missing_ice_wind_all" not in quality_flags:
-        quality_flags.append("missing_ice_wind_partial")
-
-    ice_pressure = (
-        0.55 * ice_pressures[0] + 0.45 * ice_pressures[-1]
-        if len(ice_pressures) == 2 else ice_pressures[0]
-    )
-
-    ice_wind = (
-        0.55 * ice_winds[0] + 0.45 * ice_winds[-1]
-        if len(ice_winds) == 2 else ice_winds[0]
-    )
-
-    sea_pressure, sector = min(sea_candidates, key=lambda x: x[0])
+        sea_temp_c = 0.0
 
     return {
         "icePressure": ice_pressure,
-        "iceTempC": avg(ice_temps),
+        "iceTempC": ice_temp_c,
         "iceWind": ice_wind,
         "seaPressure": sea_pressure,
-        "seaTempC": avg(sea_temps),
+        "seaTempC": sea_temp_c,
         "sector": sector,
-        "usedReservoirPoints": len(ice_pressures),
-        "usedIcePoints": len(ice_temps),
-        "usedSeaPoints": len(sea_candidates),
-        "qualityFlags": quality_flags,
+        "seaCentroidLon": centroid_lon,
+        "seaCentroidLat": centroid_lat,
+        "qualityFlags": sorted(set(quality_flags)),
+        "usedIcePressurePoints": sum(1 for v in pressure_vals if is_num(v)),
+        "usedIceTempPoints": sum(1 for v in temp_vals if is_num(v)),
+        "usedIceWindPoints": sum(1 for v in wind_vals if is_num(v)),
+        "usedSeaPressurePoints": len(sea_candidates),
+        "usedSeaTempPoints": len(sea_temps),
     }
 
 
@@ -410,32 +461,9 @@ def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
         0.35 * (reservoir / 100.0)
         + 0.20 * (coupling / 100.0)
         + 0.25 * norm(gradient, 15, 40)
-        + 0.10 * norm(d6, 0, 8)
-        + 0.10 * norm(ice_wind_trend_6h, 0, 6)
+        + 0.10 * norm(d6 if is_num(d6) else 0.0, 0, 8)
+        + 0.10 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else 0.0, 0, 6)
     )
-
-
-def merge_trend_status(base_status, field_sets):
-    flags = []
-    for fs in field_sets:
-        if fs and fs.get("qualityFlags"):
-            flags.extend(fs["qualityFlags"])
-
-    unique_flags = sorted(set(flags))
-
-    if base_status not in {"ok", "partial"}:
-        return base_status, unique_flags
-
-    if "missing_ice_temperature_all" in unique_flags or "missing_sea_temperature_all" in unique_flags:
-        return "degraded_missing_temperature", unique_flags
-
-    if "missing_ice_wind_all" in unique_flags:
-        return "degraded_missing_wind", unique_flags
-
-    if unique_flags:
-        return f"{base_status}_with_gaps", unique_flags
-
-    return base_status, unique_flags
 
 
 def main():
@@ -448,7 +476,7 @@ def main():
 
     cache = collect_all_point_data(instances)
     pool = build_time_pool(cache)
-    chosen, trend_status = choose_trend_targets(pool)
+    chosen, trend_status = choose_nearest_distinct(pool)
 
     if chosen["now"] is None:
         raise RuntimeError("Fant ikke gyldig now-tid i DMI-data.")
@@ -458,11 +486,13 @@ def main():
     m12_fields = fields_for(cache, chosen["m12"])
 
     if now_fields is None:
-        raise RuntimeError("Kunne ikke lese now-felter fra point-data.")
+        raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
-    trend_status, quality_flags = merge_trend_status(
-        trend_status, [now_fields, m6_fields, m12_fields]
-    )
+    quality_flags = sorted(set(
+        now_fields.get("qualityFlags", [])
+        + (m6_fields.get("qualityFlags", []) if m6_fields else [])
+        + (m12_fields.get("qualityFlags", []) if m12_fields else [])
+    ))
 
     ice_pressure = now_fields["icePressure"]
     ice_temp_c = now_fields["iceTempC"]
@@ -475,15 +505,38 @@ def main():
     gradient_m6 = (m6_fields["icePressure"] - m6_fields["seaPressure"]) if m6_fields else None
     gradient_m12 = (m12_fields["icePressure"] - m12_fields["seaPressure"]) if m12_fields else None
 
-    d6 = (gradient - gradient_m6) if gradient_m6 is not None else 0.0
-    d12 = (gradient - gradient_m12) if gradient_m12 is not None else 0.0
+    d6 = (gradient - gradient_m6) if is_num(gradient_m6) else None
+    d12 = (gradient - gradient_m12) if is_num(gradient_m12) else None
 
-    sf6 = (m6_fields["seaPressure"] - sea_pressure) if m6_fields else 0.0
-    sf12 = (m12_fields["seaPressure"] - sea_pressure) if m12_fields else 0.0
+    sf6 = (m6_fields["seaPressure"] - sea_pressure) if m6_fields else None
+    sf12 = (m12_fields["seaPressure"] - sea_pressure) if m12_fields else None
 
-    acc_g = d6 - (d12 - d6) if m6_fields and m12_fields else 0.0
-    acc_s = sf6 - (sf12 - sf6) if m6_fields and m12_fields else 0.0
-    ice_wind_trend_6h = (ice_wind - m6_fields["iceWind"]) if m6_fields else 0.0
+    ice_wind_trend_6h = (ice_wind - m6_fields["iceWind"]) if m6_fields and is_num(m6_fields["iceWind"]) else None
+
+    acc_uncertain = False
+    if is_num(d6) and is_num(d12):
+        acc_g = d6 - (d12 - d6)
+    elif is_num(d6):
+        acc_g = d6
+        acc_uncertain = True
+    else:
+        acc_g = None
+        acc_uncertain = True
+
+    if is_num(sf6) and is_num(sf12):
+        acc_s = sf6 - (sf12 - sf6)
+    elif is_num(sf6):
+        acc_s = sf6
+        acc_uncertain = True
+    else:
+        acc_s = None
+        acc_uncertain = True
+
+    if trend_status == "partial" and "partial_trend_window" not in quality_flags:
+        quality_flags.append("partial_trend_window")
+
+    if acc_uncertain and "acceleration_estimated" not in quality_flags:
+        quality_flags.append("acceleration_estimated")
 
     ice_pressure_anom_now = ice_pressure - ICE_PRESSURE_NORMAL_HPA
     dT_coast_ice = max(0.0, sea_temp_c - ice_temp_c)
@@ -495,7 +548,7 @@ def main():
         "icePressure": round(ice_pressure, 1),
         "seaPressure": round(sea_pressure, 1),
         "gradient": round(gradient, 1),
-        "iceWind": round(ice_wind, 1),
+        "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
         "icePressureAnomNow": round(ice_pressure_anom_now, 1),
         "coldSupportNow": round(cold_support_now, 1),
         "dTCoastIceNow": round(dT_coast_ice, 1),
@@ -504,24 +557,25 @@ def main():
 
     history.append(snapshot)
     history = history[-72:]
-    save_json(HISTORY_FILE, history)
+    save_history = history[-72:]
+    HISTORY_FILE.write_text(json.dumps(save_history, ensure_ascii=False, indent=2), encoding="utf-8")
 
     prev_24h = history_prev(history[:-1], 24)
     prev_72h = history_prev(history[:-1], 72)
 
-    ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h else ice_pressure
-    ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h else ice_pressure
+    ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
+    ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
 
     ice_pressure_trend_24h = ice_pressure - ice_24h_ago
     ice_pressure_trend_72h = ice_pressure - ice_72h_ago
 
-    ice_anom_72 = [float(x.get("icePressureAnomNow", 0.0)) for x in history]
-    cold_72 = [float(x.get("coldSupportNow", 0.0)) for x in history]
-    dT_72 = [float(x.get("dTCoastIceNow", 0.0)) for x in history]
+    ice_anom_72 = [float(x.get("icePressureAnomNow", 0.0)) for x in history if is_num(x.get("icePressureAnomNow"))]
+    cold_72 = [float(x.get("coldSupportNow", 0.0)) for x in history if is_num(x.get("coldSupportNow"))]
+    dT_72 = [float(x.get("dTCoastIceNow", 0.0)) for x in history if is_num(x.get("dTCoastIceNow"))]
 
-    ice_anom_72_mean = avg(ice_anom_72)
-    cold_72_mean = avg(cold_72)
-    dT_72_mean = avg(dT_72)
+    ice_anom_72_mean = avg(ice_anom_72) if ice_anom_72 else 0.0
+    cold_72_mean = avg(cold_72) if cold_72 else 0.0
+    dT_72_mean = avg(dT_72) if dT_72 else 0.0
 
     reservoir = 100 * (
         0.55 * norm(ice_anom_72_mean, -12, 12)
@@ -533,7 +587,7 @@ def main():
     if ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
-    sector_score = {"SC": 90, "C": 75, "N": 40}.get(sector, 25)
+    sector_score = {"S": 90, "C": 70, "N": 40}.get(sector, 25)
     coupling = 100 * (
         0.60 * (sector_score / 100.0)
         + 0.25 * norm(sea_low_depth, 5, 30)
@@ -554,13 +608,13 @@ def main():
     trigger = 100 * (
         0.28 * norm(gradient, 0, 65)
         + 0.10 * gboost
-        + 0.16 * norm(sf6, 0, 10)
-        + 0.10 * norm(sf12, 0, 14)
-        + 0.12 * norm(d6, 0, 10)
-        + 0.08 * norm(d12, 0, 14)
-        + 0.07 * norm(acc_g, 0, 6)
-        + 0.04 * norm(acc_s, 0, 6)
-        + 0.05 * norm(ice_wind_trend_6h, 0, 6)
+        + 0.16 * norm(sf6 if is_num(sf6) else 0.0, 0, 10)
+        + 0.10 * norm(sf12 if is_num(sf12) else 0.0, 0, 14)
+        + 0.12 * norm(d6 if is_num(d6) else 0.0, 0, 10)
+        + 0.08 * norm(d12 if is_num(d12) else 0.0, 0, 14)
+        + 0.07 * norm(acc_g if is_num(acc_g) else 0.0, 0, 6)
+        + 0.04 * norm(acc_s if is_num(acc_s) else 0.0, 0, 6)
+        + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else 0.0, 0, 6)
     )
     trigger = clamp(trigger, 0, 100)
 
@@ -575,10 +629,10 @@ def main():
         and coupling >= 60
         and (
             gradient >= 20
-            or d6 >= 2
-            or sf6 >= 2
-            or acc_g >= 1
-            or ice_wind_trend_6h >= 2
+            or (is_num(d6) and d6 >= 2)
+            or (is_num(sf6) and sf6 >= 2)
+            or (is_num(acc_g) and acc_g >= 1)
+            or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
         )
     )
 
@@ -595,16 +649,20 @@ def main():
         phase = "WATCH"
 
     trend_tag = "" if trend_status == "ok" else " T?"
-    ag_code = int(round(clamp(acc_g, 0, 9)))
-    as_code = int(round(clamp(acc_s, 0, 9)))
+    ag_tag = compact_score_tag("AG", acc_g, uncertain=acc_uncertain)
+    as_tag = compact_score_tag("AS", acc_s, uncertain=acc_uncertain)
 
     message = (
         f"{LOCATION_NAME} {level} {horizon}{trend_tag} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
         f"ICE{ice_pressure:.1f} SEA{sea_pressure:.1f} "
-        f"GR{gradient:.1f} d6{d6:+.1f} d12{d12:+.1f} "
-        f"SF6{sf6:+.1f} SF12{sf12:+.1f} DT{dT_coast_ice:.0f} "
-        f"AG{ag_code} AS{as_code}"
+        f"GR{gradient:.1f} "
+        f"d6{fmt_msg_num(d6, signed=True)} "
+        f"d12{fmt_msg_num(d12, signed=True)} "
+        f"SF6{fmt_msg_num(sf6, signed=True)} "
+        f"SF12{fmt_msg_num(sf12, signed=True)} "
+        f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
+        f"{ag_tag} {as_tag}"
     )
 
     payload = {
@@ -612,7 +670,7 @@ def main():
             "source": "DMI HARMONIE",
             "updatedAt": now_str,
             "location": LOCATION_NAME,
-            "model": COLLECTION,
+            "model": COL,
             "forecastInfo": "Latest available forecast step",
             "instanceId": latest,
         },
@@ -620,13 +678,13 @@ def main():
             "icePressure": round(ice_pressure, 1),
             "seaPressure": round(sea_pressure, 1),
             "gradient": round(gradient, 1),
-            "d6": round(d6, 1),
-            "d12": round(d12, 1),
-            "sf6": round(sf6, 1),
-            "sf12": round(sf12, 1),
-            "iceWind": round(ice_wind, 1),
-            "iceWindTrend6h": round(ice_wind_trend_6h, 1),
-            "coastIceDeltaT": round(dT_coast_ice, 1),
+            "d6": round(d6, 1) if is_num(d6) else None,
+            "d12": round(d12, 1) if is_num(d12) else None,
+            "sf6": round(sf6, 1) if is_num(sf6) else None,
+            "sf12": round(sf12, 1) if is_num(sf12) else None,
+            "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
+            "iceWindTrend6h": round(ice_wind_trend_6h, 1) if is_num(ice_wind_trend_6h) else None,
+            "coastIceDeltaT": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
         },
         "scores": {
             "reservoir": int(round(reservoir)),
@@ -638,6 +696,8 @@ def main():
         "derived": {
             "watch": watch,
             "sector": sector,
+            "seaCentroidLon": round(now_fields["seaCentroidLon"], 3) if is_num(now_fields["seaCentroidLon"]) else None,
+            "seaCentroidLat": round(now_fields["seaCentroidLat"], 3) if is_num(now_fields["seaCentroidLat"]) else None,
             "icePressureAnomNow": round(ice_pressure_anom_now, 1),
             "icePressureAnom72hMean": round(ice_anom_72_mean, 1),
             "icePressureTrend24h": round(ice_pressure_trend_24h, 1),
@@ -646,8 +706,9 @@ def main():
             "katabaticPotential": int(round(katabatic_potential)),
             "seaLowDepth": round(sea_low_depth, 1),
             "gradientBoost": round(gboost, 2),
-            "accG": round(acc_g, 1),
-            "accS": round(acc_s, 1),
+            "accG": round(acc_g, 1) if is_num(acc_g) else None,
+            "accS": round(acc_s, 1) if is_num(acc_s) else None,
+            "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
             "qualityFlags": quality_flags,
             "selectedTimes": {
@@ -657,9 +718,11 @@ def main():
                 }
                 for k, v in chosen.items()
             },
-            "usedReservoirPoints": now_fields["usedReservoirPoints"],
-            "usedIcePoints": now_fields["usedIcePoints"],
-            "usedSeaPoints": now_fields["usedSeaPoints"],
+            "usedIcePressurePoints": now_fields["usedIcePressurePoints"],
+            "usedIceTempPoints": now_fields["usedIceTempPoints"],
+            "usedIceWindPoints": now_fields["usedIceWindPoints"],
+            "usedSeaPressurePoints": now_fields["usedSeaPressurePoints"],
+            "usedSeaTempPoints": now_fields["usedSeaTempPoints"],
         },
         "output": {
             "level": level,
@@ -693,7 +756,7 @@ if __name__ == "__main__":
             "source": "DMI HARMONIE",
             "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "location": LOCATION_NAME,
-            "model": COLLECTION,
+            "model": COL,
             "forecastInfo": f"Update failed: {type(e).__name__}",
             "instanceId": "-",
         }
