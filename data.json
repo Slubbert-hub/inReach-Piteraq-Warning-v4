@@ -1,10 +1,10 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "-",
+    "updatedAt": "2026-03-11 00:17 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
+    "forecastInfo": "Update failed: TypeError",
     "instanceId": "-"
   },
   "inputs": {
@@ -39,7 +39,7 @@
     "gradientBoost": 0,
     "accG": 0,
     "accS": 0,
-    "trendDataStatus": "-",
+    "trendDataStatus": "error: TypeError",
     "selectedTimes": {},
     "usedReservoirPoints": 0,
     "usedIcePoints": 0,
@@ -47,7 +47,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "INIT",
-    "message": "TASIILAQ GRN 12-24T RES0 TRG0 CPL0 ICE0.0 SEA0.0 GR0.0 d6+0.0 d12+0.0 SF6+0.0 SF12+0.0 DT0 AG0 AS0"
+    "phase": "ERROR",
+    "message": "TASIILAQ ERROR DMI TypeError"
   }
 }
