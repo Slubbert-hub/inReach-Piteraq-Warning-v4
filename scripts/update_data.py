@@ -1,4 +1,5 @@
 import json
+import math
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -69,6 +70,18 @@ def load_json(path, default):
 
 def save_json(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def is_num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def safe_get(arr, idx):
+    if not isinstance(arr, list):
+        return None
+    if idx < 0 or idx >= len(arr):
+        return None
+    return arr[idx]
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
@@ -258,7 +271,7 @@ def extract_point_values(cache, instance_id, point_type, point_name, valid_time)
 
     out = {}
     for k, arr in values.items():
-        out[k] = arr[idx] if idx < len(arr) else None
+        out[k] = safe_get(arr, idx)
     return out
 
 
@@ -273,6 +286,9 @@ def fields_for(cache, choice):
     ice_temps = []
     ice_winds = []
 
+    missing_ice_temp = 0
+    missing_ice_wind = 0
+
     for name in ["core", "corridor"]:
         vals = extract_point_values(cache, iid, "ice", name, vt)
         if not vals:
@@ -282,15 +298,23 @@ def fields_for(cache, choice):
         t = vals.get("temperature-2m")
         w = vals.get("wind-speed-100m")
 
-        if p is not None:
+        if is_num(p):
             ice_pressures.append(p / 100.0)
-        if t is not None:
+
+        if is_num(t):
             ice_temps.append(kelvin_to_celsius(t))
-        if w is not None:
+        else:
+            missing_ice_temp += 1
+
+        if is_num(w):
             ice_winds.append(w)
+        else:
+            missing_ice_wind += 1
 
     sea_candidates = []
     sea_temps = []
+
+    missing_sea_temp = 0
 
     for name in ["SC", "C", "N"]:
         vals = extract_point_values(cache, iid, "sea", name, vt)
@@ -300,22 +324,51 @@ def fields_for(cache, choice):
         p = vals.get("pressure-sealevel")
         t = vals.get("temperature-2m")
 
-        if p is not None:
+        if is_num(p):
             sea_candidates.append((p / 100.0, name))
-        if t is not None:
+
+        if is_num(t):
             sea_temps.append(kelvin_to_celsius(t))
+        else:
+            missing_sea_temp += 1
 
     if not ice_pressures or not sea_candidates:
         return None
+
+    quality_flags = []
+
+    if not ice_temps:
+        quality_flags.append("missing_ice_temperature_all")
+        # Bruk konservativ fallback, men merk det tydelig
+        ice_temps = [-20.0]
+
+    if not sea_temps:
+        quality_flags.append("missing_sea_temperature_all")
+        sea_temps = [0.0]
+
+    if not ice_winds:
+        quality_flags.append("missing_ice_wind_all")
+        ice_winds = [0.0]
+
+    if missing_ice_temp > 0 and "missing_ice_temperature_all" not in quality_flags:
+        quality_flags.append("missing_ice_temperature_partial")
+
+    if missing_sea_temp > 0 and "missing_sea_temperature_all" not in quality_flags:
+        quality_flags.append("missing_sea_temperature_partial")
+
+    if missing_ice_wind > 0 and "missing_ice_wind_all" not in quality_flags:
+        quality_flags.append("missing_ice_wind_partial")
 
     ice_pressure = (
         0.55 * ice_pressures[0] + 0.45 * ice_pressures[-1]
         if len(ice_pressures) == 2 else ice_pressures[0]
     )
+
     ice_wind = (
         0.55 * ice_winds[0] + 0.45 * ice_winds[-1]
-        if len(ice_winds) == 2 else (ice_winds[0] if ice_winds else 0.0)
+        if len(ice_winds) == 2 else ice_winds[0]
     )
+
     sea_pressure, sector = min(sea_candidates, key=lambda x: x[0])
 
     return {
@@ -328,6 +381,7 @@ def fields_for(cache, choice):
         "usedReservoirPoints": len(ice_pressures),
         "usedIcePoints": len(ice_temps),
         "usedSeaPoints": len(sea_candidates),
+        "qualityFlags": quality_flags,
     }
 
 
@@ -361,6 +415,29 @@ def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
     )
 
 
+def merge_trend_status(base_status, field_sets):
+    flags = []
+    for fs in field_sets:
+        if fs and fs.get("qualityFlags"):
+            flags.extend(fs["qualityFlags"])
+
+    unique_flags = sorted(set(flags))
+
+    if base_status not in {"ok", "partial"}:
+        return base_status, unique_flags
+
+    if "missing_ice_temperature_all" in unique_flags or "missing_sea_temperature_all" in unique_flags:
+        return "degraded_missing_temperature", unique_flags
+
+    if "missing_ice_wind_all" in unique_flags:
+        return "degraded_missing_wind", unique_flags
+
+    if unique_flags:
+        return f"{base_status}_with_gaps", unique_flags
+
+    return base_status, unique_flags
+
+
 def main():
     now_dt = datetime.now(timezone.utc)
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
@@ -382,6 +459,10 @@ def main():
 
     if now_fields is None:
         raise RuntimeError("Kunne ikke lese now-felter fra point-data.")
+
+    trend_status, quality_flags = merge_trend_status(
+        trend_status, [now_fields, m6_fields, m12_fields]
+    )
 
     ice_pressure = now_fields["icePressure"]
     ice_temp_c = now_fields["iceTempC"]
@@ -568,6 +649,7 @@ def main():
             "accG": round(acc_g, 1),
             "accS": round(acc_s, 1),
             "trendDataStatus": trend_status,
+            "qualityFlags": quality_flags,
             "selectedTimes": {
                 k: None if v is None else {
                     "instanceId": v["instanceId"],
@@ -589,6 +671,8 @@ def main():
     save_json(DATA_FILE, payload)
     print("Updated data.json/history.json")
     print("trendDataStatus:", trend_status)
+    if quality_flags:
+        print("qualityFlags:", quality_flags)
 
 
 if __name__ == "__main__":
@@ -615,6 +699,7 @@ if __name__ == "__main__":
         }
         fallback["derived"] = fallback.get("derived", {})
         fallback["derived"]["trendDataStatus"] = f"error: {type(e).__name__}"
+        fallback["derived"]["qualityFlags"] = ["hard_failure"]
         fallback["output"] = fallback.get("output", {})
         fallback["output"]["phase"] = "ERROR"
         fallback["output"]["message"] = f"{LOCATION_NAME} ERROR DMI {type(e).__name__}"
