@@ -12,9 +12,9 @@ LOCATION_NAME = "TASIILAQ"
 DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 
-REQUEST_TIMEOUT = 20
-REQUEST_SLEEP = 1.0
-REQUEST_RETRIES = 4
+REQUEST_TIMEOUT = 45
+REQUEST_SLEEP = 1.2
+REQUEST_RETRIES = 5
 TIME_TOLERANCE_HOURS = 2.5
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
@@ -80,7 +80,7 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
             r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
 
             if r.status_code == 429:
-                wait = 5 + attempt * 3
+                wait = 15 + attempt * 10
                 print(f"DMI rate limit (429). Waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -88,9 +88,23 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
             r.raise_for_status()
             return r.json()
 
+        except requests.exceptions.ReadTimeout as e:
+            last_err = e
+            wait = 10 + attempt * 10
+            print(f"DMI read timeout. Waiting {wait}s before retry...")
+            time.sleep(wait)
+
+        except requests.exceptions.ConnectTimeout as e:
+            last_err = e
+            wait = 10 + attempt * 10
+            print(f"DMI connect timeout. Waiting {wait}s before retry...")
+            time.sleep(wait)
+
         except Exception as e:
             last_err = e
-            time.sleep(1.5 + attempt)
+            wait = 3 + attempt * 3
+            print(f"DMI request failed: {type(e).__name__}. Waiting {wait}s...")
+            time.sleep(wait)
 
     raise last_err
 
@@ -126,7 +140,6 @@ def list_instances():
     if not ids:
         raise RuntimeError("Fant ingen DMI instanceId-er.")
 
-    # Bare siste 3 kjøringer
     return ids[-3:]
 
 
@@ -214,9 +227,6 @@ def choose_trend_targets(pool):
 
 
 def collect_all_point_data(instances):
-    """
-    Ett kall per punkt per instance, flere parametre i samme kall.
-    """
     cache = {}
 
     for iid in instances:
@@ -607,6 +617,6 @@ if __name__ == "__main__":
         fallback["derived"]["trendDataStatus"] = f"error: {type(e).__name__}"
         fallback["output"] = fallback.get("output", {})
         fallback["output"]["phase"] = "ERROR"
+        fallback["output"]["message"] = f"{LOCATION_NAME} ERROR DMI {type(e).__name__}"
         save_json(DATA_FILE, fallback)
         print("Script failed:", repr(e))
-        raise
