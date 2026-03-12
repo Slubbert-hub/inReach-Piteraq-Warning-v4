@@ -26,15 +26,24 @@ ICE_POINTS = [
     {"name": "mouth", "lon": -40.3, "lat": 68.2},
 ]
 
+# Utvidet 10-punkts sjøfelt
 SEA_POINTS = [
     {"name": "W1", "lon": -34.9, "lat": 62.8},
     {"name": "W2", "lon": -33.7, "lat": 63.8},
     {"name": "W3", "lon": -32.5, "lat": 64.8},
     {"name": "C1", "lon": -30.5, "lat": 64.6},
     {"name": "C2", "lon": -31.1, "lat": 65.4},
+    {"name": "M1", "lon": -30.1, "lat": 63.9},
+    {"name": "M2", "lon": -31.8, "lat": 64.3},
+    {"name": "M3", "lon": -30.2, "lat": 65.0},
     {"name": "E1", "lon": -29.1, "lat": 65.8},
     {"name": "E2", "lon": -27.5, "lat": 66.4},
 ]
+
+WEST_NAMES = ["W1", "W2", "W3"]
+MID_NAMES = ["C1", "C2", "M1", "M2", "M3"]
+EAST_NAMES = ["E1", "E2"]
+ALL_SEA_NAMES = WEST_NAMES + MID_NAMES + EAST_NAMES
 
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
@@ -106,6 +115,12 @@ def compact_temp_trend_tag(prefix, value):
         return f"{prefix}?"
     iv = int(round(value))
     return f"{prefix}{iv:+d}"
+
+
+def compact_gate_tag(prefix, value):
+    if not is_num(value):
+        return f"{prefix}?"
+    return f"{prefix}{int(round(value))}"
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
@@ -336,6 +351,18 @@ def centroid_low(candidates):
     return cp, clon, clat, nearest_name
 
 
+def mean_pressure_for_names(cache, valid_time, names):
+    vals = []
+    for name in names:
+        row = get_row_for_valid_time(cache["sea"], name, valid_time)
+        if not row:
+            continue
+        p = row.get("pressure-sealevel")
+        if is_num(p):
+            vals.append(p / 100.0)
+    return avg(vals)
+
+
 def fields_for_valid_time(cache, valid_time):
     if valid_time is None:
         return None
@@ -383,7 +410,7 @@ def fields_for_valid_time(cache, valid_time):
     sea_candidates = []
     sea_temps = []
 
-    for name in ["W1", "W2", "W3", "C1", "C2", "E1", "E2"]:
+    for name in ALL_SEA_NAMES:
         row = get_row_for_valid_time(cache["sea"], name, valid_time)
         if not row:
             continue
@@ -422,8 +449,28 @@ def fields_for_valid_time(cache, valid_time):
     sea_temp_c = avg(sea_temps)
     if sea_temp_c is None:
         quality_flags.append("missing_sea_temperature_all")
-    elif len(sea_temps) < 7:
+    elif len(sea_temps) < len(ALL_SEA_NAMES):
         quality_flags.append("missing_sea_temperature_partial")
+
+    west_mean = mean_pressure_for_names(cache, valid_time, WEST_NAMES)
+    mid_mean = mean_pressure_for_names(cache, valid_time, MID_NAMES)
+    east_mean = mean_pressure_for_names(cache, valid_time, EAST_NAMES)
+
+    gate_mid = None
+    gate_east = None
+    vent_index = None
+
+    if is_num(west_mean) and is_num(mid_mean):
+        gate_mid = west_mean - mid_mean
+    if is_num(west_mean) and is_num(east_mean):
+        gate_east = west_mean - east_mean
+    if is_num(gate_mid) or is_num(gate_east):
+        vent_index = (0.6 * (gate_mid if is_num(gate_mid) else 0.0)) + (0.4 * (gate_east if is_num(gate_east) else 0.0))
+
+    if not is_num(gate_mid):
+        quality_flags.append("missing_gate_mid")
+    if not is_num(gate_east):
+        quality_flags.append("missing_gate_east")
 
     return {
         "icePressure": ice_pressure,
@@ -439,6 +486,12 @@ def fields_for_valid_time(cache, valid_time):
         "seaCentroidSector": centroid_sector,
         "seaMinCentroidSpread": spread,
         "seaTempC": sea_temp_c,
+        "westMeanPressure": west_mean,
+        "midMeanPressure": mid_mean,
+        "eastMeanPressure": east_mean,
+        "gateMid": gate_mid,
+        "gateEast": gate_east,
+        "ventilIndex": vent_index,
         "qualityFlags": sorted(set(quality_flags)),
         "usedIcePressurePoints": sum(1 for v in pressure_vals if is_num(v)),
         "usedIceTempPoints": sum(1 for v in temp_vals if is_num(v)),
@@ -470,9 +523,9 @@ def gradient_boost(gradient_hpa):
 
 def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
     return 100 * (
-        0.35 * (reservoir / 100.0)
-        + 0.20 * (coupling / 100.0)
-        + 0.25 * norm(gradient, 15, 40)
+        0.32 * (reservoir / 100.0)
+        + 0.24 * (coupling / 100.0)
+        + 0.24 * norm(gradient, 15, 40)
         + 0.10 * norm(d6 if is_num(d6) else 0.0, 0, 8)
         + 0.10 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else 0.0, 0, 6)
     )
@@ -581,9 +634,17 @@ def main():
         acc_s = None
         acc_uncertain = True
 
+    vent_now = now_fields["ventilIndex"]
+    vent_m6 = m6_fields["ventilIndex"] if m6_fields else None
+    vent_m12 = m12_fields["ventilIndex"] if m12_fields else None
+
+    vent_d6 = (vent_now - vent_m6) if is_num(vent_now) and is_num(vent_m6) else None
+    vent_d12 = (vent_now - vent_m12) if is_num(vent_now) and is_num(vent_m12) else None
+
+    if not is_num(vent_now):
+        quality_flags.append("missing_ventil_index")
     if trend_status == "partial" and "partial_trend_window" not in quality_flags:
         quality_flags.append("partial_trend_window")
-
     if acc_uncertain and "acceleration_estimated" not in quality_flags:
         quality_flags.append("acceleration_estimated")
 
@@ -668,19 +729,17 @@ def main():
         reservoir = min(reservoir, 39)
 
     sector_score = {
-        "W1": 90,
-        "W2": 92,
-        "W3": 88,
-        "C1": 78,
-        "C2": 68,
-        "E1": 50,
-        "E2": 35,
+        "W1": 90, "W2": 92, "W3": 88,
+        "C1": 78, "C2": 72,
+        "M1": 80, "M2": 84, "M3": 82,
+        "E1": 50, "E2": 35,
     }.get(sector, 25)
 
     coupling = 100 * (
-        0.60 * (sector_score / 100.0)
-        + 0.25 * norm(sea_low_depth, 5, 30)
-        + 0.15 * norm(ice_wind, 4, 20)
+        0.46 * (sector_score / 100.0)
+        + 0.20 * norm(sea_low_depth, 5, 30)
+        + 0.12 * norm(ice_wind, 4, 20)
+        + 0.22 * norm(vent_now, 4, 16)
     )
     coupling = clamp(coupling, 0, 100)
 
@@ -698,15 +757,18 @@ def main():
 
     gboost = gradient_boost(gradient)
     trigger = 100 * (
-        0.30 * norm(gradient, 0, 65)
-        + 0.10 * gboost
-        + 0.18 * norm(sf6 if is_num(sf6) else None, 0, 10)
-        + 0.10 * norm(sf12 if is_num(sf12) else None, 0, 14)
-        + 0.12 * norm(d6 if is_num(d6) else None, 0, 10)
+        0.26 * norm(gradient, 0, 65)
+        + 0.09 * gboost
+        + 0.16 * norm(sf6 if is_num(sf6) else None, 0, 10)
+        + 0.09 * norm(sf12 if is_num(sf12) else None, 0, 14)
+        + 0.11 * norm(d6 if is_num(d6) else None, 0, 10)
         + 0.06 * norm(d12 if is_num(d12) else None, 0, 14)
-        + 0.06 * norm(acc_g if is_num(acc_g) else None, 0, 6)
+        + 0.05 * norm(acc_g if is_num(acc_g) else None, 0, 6)
         + 0.03 * norm(acc_s if is_num(acc_s) else None, 0, 6)
         + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else None, 0, 6)
+        + 0.07 * norm(vent_now, 4, 16)
+        + 0.03 * norm(vent_d6 if is_num(vent_d6) else None, 0, 6)
+        + 0.00 * norm(vent_d12 if is_num(vent_d12) else None, 0, 8)
     )
     trigger = clamp(trigger, 0, 100)
 
@@ -725,11 +787,12 @@ def main():
             or (is_num(sf6) and sf6 >= 2)
             or (is_num(acc_g) and acc_g >= 1)
             or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
+            or (is_num(vent_now) and vent_now >= 8)
         )
     )
 
-    base = 0.58 * trigger + 0.32 * reservoir + 0.10 * potential
-    risk = base * (0.60 + 0.40 * (coupling / 100.0))
+    base = 0.58 * trigger + 0.30 * reservoir + 0.12 * potential
+    risk = base * (0.58 + 0.42 * (coupling / 100.0))
 
     if trigger < 20:
         risk = min(risk, 34)
@@ -745,6 +808,7 @@ def main():
     as_tag = compact_score_tag("AS", acc_s, uncertain=acc_uncertain)
     ct24_tag = compact_temp_trend_tag("CT24", ice_temp_trend_24h)
     ct72_tag = compact_temp_trend_tag("CT72", ice_temp_trend_72h)
+    vg_tag = compact_gate_tag("VG", vent_now)
 
     message = (
         f"{LOCATION_NAME} {level} {horizon}{trend_tag} "
@@ -757,6 +821,7 @@ def main():
         f"SF12{fmt_msg_num(sf12, signed=True)} "
         f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
         f"{ct24_tag} {ct72_tag} "
+        f"{vg_tag} "
         f"{ag_tag} {as_tag}"
     )
 
@@ -782,6 +847,9 @@ def main():
             "coastIceDeltaT": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
             "iceTempTrend24h": round(ice_temp_trend_24h, 1) if is_num(ice_temp_trend_24h) else None,
             "iceTempTrend72h": round(ice_temp_trend_72h, 1) if is_num(ice_temp_trend_72h) else None,
+            "ventilIndex": round(vent_now, 1) if is_num(vent_now) else None,
+            "ventilD6": round(vent_d6, 1) if is_num(vent_d6) else None,
+            "ventilD12": round(vent_d12, 1) if is_num(vent_d12) else None,
         },
         "scores": {
             "reservoir": int(round(reservoir)),
@@ -802,6 +870,14 @@ def main():
             "seaCentroidSector": now_fields["seaCentroidSector"],
             "seaMinCentroidSpread": round(now_fields["seaMinCentroidSpread"], 1) if is_num(now_fields["seaMinCentroidSpread"]) else None,
             "seaMinMotionKm6": round(sea_motion_km6, 1) if is_num(sea_motion_km6) else None,
+            "westMeanPressure": round(now_fields["westMeanPressure"], 1) if is_num(now_fields["westMeanPressure"]) else None,
+            "midMeanPressure": round(now_fields["midMeanPressure"], 1) if is_num(now_fields["midMeanPressure"]) else None,
+            "eastMeanPressure": round(now_fields["eastMeanPressure"], 1) if is_num(now_fields["eastMeanPressure"]) else None,
+            "gateMid": round(now_fields["gateMid"], 1) if is_num(now_fields["gateMid"]) else None,
+            "gateEast": round(now_fields["gateEast"], 1) if is_num(now_fields["gateEast"]) else None,
+            "ventilIndex": round(vent_now, 1) if is_num(vent_now) else None,
+            "ventilD6": round(vent_d6, 1) if is_num(vent_d6) else None,
+            "ventilD12": round(vent_d12, 1) if is_num(vent_d12) else None,
             "icePressureAnomNow": round(ice_pressure_anom_now, 1),
             "icePressureAnom72hMean": round(ice_anom_72_mean, 1),
             "icePressureTrend24h": round(ice_pressure_trend_24h, 1),
@@ -867,6 +943,9 @@ if __name__ == "__main__":
                 "coastIceDeltaT": None,
                 "iceTempTrend24h": None,
                 "iceTempTrend72h": None,
+                "ventilIndex": None,
+                "ventilD6": None,
+                "ventilD12": None,
             },
             "scores": {
                 "reservoir": None,
@@ -887,6 +966,14 @@ if __name__ == "__main__":
                 "seaCentroidSector": None,
                 "seaMinCentroidSpread": None,
                 "seaMinMotionKm6": None,
+                "westMeanPressure": None,
+                "midMeanPressure": None,
+                "eastMeanPressure": None,
+                "gateMid": None,
+                "gateEast": None,
+                "ventilIndex": None,
+                "ventilD6": None,
+                "ventilD12": None,
                 "icePressureAnomNow": None,
                 "icePressureAnom72hMean": None,
                 "icePressureTrend24h": None,
