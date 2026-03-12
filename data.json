@@ -1,69 +1,79 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-12 02:19 UTC",
+    "updatedAt": "2026-03-12 02:33 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Update failed: TypeError",
-    "instanceId": "-"
+    "forecastInfo": "Latest available forecast step",
+    "instanceId": "2026-03-11T210000Z"
   },
   "inputs": {
-    "icePressure": 991.3,
-    "seaPressure": 977.7,
-    "gradient": 13.6,
-    "d6": 1.0,
-    "d12": null,
-    "sf6": 1.7,
-    "sf12": null,
-    "iceWind": 10.3,
-    "iceWindTrend6h": 5.1,
-    "coastIceDeltaT": 40.6,
-    "iceTempTrend24h": 0.0,
-    "iceTempTrend72h": 0.0
+    "icePressure": 991.2,
+    "seaPressure": 976.0,
+    "gradient": 15.2,
+    "d6": 1.9,
+    "d12": 3.3,
+    "sf6": 2.8,
+    "sf12": 4.1,
+    "iceWind": 9.6,
+    "iceWindTrend6h": 3.4,
+    "coastIceDeltaT": 41.9,
+    "iceTempTrend24h": null,
+    "iceTempTrend72h": null
   },
   "scores": {
     "reservoir": 7,
-    "trigger": 17,
-    "coupling": 44,
-    "potential": 21,
-    "risk": 11
+    "trigger": 23,
+    "coupling": 45,
+    "potential": 20,
+    "risk": 14
   },
   "derived": {
     "watch": false,
     "sector": "E2",
+    "usedInstanceIds": [
+      "2026-03-11T150000Z",
+      "2026-03-11T180000Z",
+      "2026-03-11T210000Z"
+    ],
     "seaMinLon": -27.5,
     "seaMinLat": 66.4,
-    "seaCentroidPressure": 978.6,
-    "seaCentroidLon": -29.559,
-    "seaCentroidLat": 65.518,
+    "seaCentroidPressure": 977.2,
+    "seaCentroidLon": -29.353,
+    "seaCentroidLat": 65.599,
     "seaCentroidSector": "E1",
-    "seaMinCentroidSpread": 1.0,
-    "seaMinMotionKm6": 0.0,
-    "icePressureAnomNow": -22.0,
-    "icePressureAnom72hMean": -20.7,
+    "seaMinCentroidSpread": 1.1,
+    "seaMinMotionKm6": 240.2,
+    "icePressureAnomNow": -22.1,
+    "icePressureAnom72hMean": -20.9,
     "icePressureTrend24h": 0.0,
     "icePressureTrend72h": 0.0,
-    "coldSupport72h": 36.9,
+    "coldSupport72h": 37.5,
     "katabaticPotential": 34,
-    "seaLowDepth": 22.3,
+    "seaLowDepth": 24.0,
     "gradientBoost": 0.0,
-    "accG": 1.0,
-    "accS": 1.7,
-    "accUncertain": true,
-    "trendDataStatus": "error: TypeError",
+    "accG": 0.4,
+    "accS": 1.5,
+    "accUncertain": false,
+    "trendDataStatus": "ok",
     "qualityFlags": [
-      "hard_failure"
+      "missing_ice_temp_trend_24h",
+      "missing_ice_temp_trend_72h",
+      "sea_min_motion_high"
     ],
     "selectedTimes": {
       "now": {
-        "validTime": "2026-03-12T01:00:00.000Z",
-        "diffHours": 0.11
+        "validTime": "2026-03-12T03:00:00.000Z",
+        "diffHours": 0.44
       },
       "m6": {
         "validTime": "2026-03-11T21:00:00.000Z",
-        "diffHours": 2.11
+        "diffHours": 0.44
       },
-      "m12": null
+      "m12": {
+        "validTime": "2026-03-11T15:00:00.000Z",
+        "diffHours": 0.44
+      }
     },
     "usedIcePressurePoints": 3,
     "usedIceTempPoints": 3,
@@ -73,7 +83,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "ERROR",
-    "message": "TASIILAQ ERROR DMI TypeError"
+    "phase": "PITERAQ LOW",
+    "message": "TASIILAQ GRN 12-24T RES7 TRG23 CPL45 ICE991.2 SEA976.0 GR15.2 d6+1.9 d12+3.3 SF6+2.8 SF12+4.1 DT42 CT24? CT72? AG0 AS2"
   }
 }
