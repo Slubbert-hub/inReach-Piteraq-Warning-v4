@@ -14,8 +14,8 @@ DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 
 REQUEST_TIMEOUT = 45
-REQUEST_SLEEP = 1.2
-REQUEST_RETRIES = 5
+REQUEST_SLEEP = 0.8
+REQUEST_RETRIES = 4
 TIME_TOLERANCE_HOURS = 2.75
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
@@ -104,7 +104,6 @@ def compact_score_tag(prefix, value, uncertain=False):
 
 
 def compact_temp_trend_tag(prefix, value):
-    # Negativ verdi = kaldere
     if not is_num(value):
         return f"{prefix}?"
     iv = int(round(value))
@@ -120,7 +119,7 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
             r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
 
             if r.status_code == 429:
-                wait = 15 + attempt * 10
+                wait = 10 + attempt * 8
                 print(f"DMI rate limit (429). Waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -130,19 +129,19 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
 
         except requests.exceptions.ReadTimeout as e:
             last_err = e
-            wait = 10 + attempt * 10
+            wait = 6 + attempt * 6
             print(f"DMI read timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except requests.exceptions.ConnectTimeout as e:
             last_err = e
-            wait = 10 + attempt * 10
+            wait = 6 + attempt * 6
             print(f"DMI connect timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except Exception as e:
             last_err = e
-            wait = 3 + attempt * 3
+            wait = 2 + attempt * 3
             print(f"DMI request failed: {type(e).__name__}. Waiting {wait}s...")
             time.sleep(wait)
 
@@ -179,7 +178,7 @@ def list_instances():
     ids = sorted(set(ids))
     if not ids:
         raise RuntimeError("Fant ingen DMI instanceId-er.")
-    return ids[-3:]
+    return ids
 
 
 def fetch_position(instance_id, lon, lat, parameter_names):
@@ -202,101 +201,62 @@ def parse_coverage_series(data, parameter_names):
     return times, values
 
 
-def collect_all_point_data(instances):
-    cache = {}
-    for iid in instances:
-        cache[iid] = {"ice": {}, "sea": {}}
-        print(f"Fetching point data for {iid}")
+def idx_at(times, target_dt, off_hours=0, tolerance_hours=TIME_TOLERANCE_HOURS):
+    """
+    Finn nærmeste tilgjengelige tidspunkt, slik den andre appen gjorde.
+    """
+    if not times:
+        return None, None, None
 
-        for p in ICE_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
-            times, values = parse_coverage_series(data, ICE_PARAMS)
-            cache[iid]["ice"][p["name"]] = {
-                "times": times,
-                "values": values,
-                "lon": p["lon"],
-                "lat": p["lat"],
-            }
+    desired = target_dt - timedelta(hours=off_hours)
+    parsed = [parse_iso(t) for t in times]
 
-        for p in SEA_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
-            times, values = parse_coverage_series(data, SEA_PARAMS)
-            cache[iid]["sea"][p["name"]] = {
-                "times": times,
-                "values": values,
-                "lon": p["lon"],
-                "lat": p["lat"],
-            }
+    best_idx = None
+    best_diff = None
+
+    for i, dt in enumerate(parsed):
+        diff_h = abs((dt - desired).total_seconds()) / 3600.0
+        if best_diff is None or diff_h < best_diff:
+            best_idx = i
+            best_diff = diff_h
+
+    if best_idx is None or best_diff is None or best_diff > tolerance_hours:
+        return None, None, None
+
+    return best_idx, times[best_idx], best_diff
+
+
+def collect_latest_instance_series(instance_id):
+    cache = {"ice": {}, "sea": {}}
+
+    print(f"Fetching DMI series for instance {instance_id}")
+
+    for p in ICE_POINTS:
+        data = fetch_position(instance_id, p["lon"], p["lat"], ICE_PARAMS)
+        times, values = parse_coverage_series(data, ICE_PARAMS)
+        cache["ice"][p["name"]] = {
+            "times": times,
+            "values": values,
+            "lon": p["lon"],
+            "lat": p["lat"],
+        }
+
+    for p in SEA_POINTS:
+        data = fetch_position(instance_id, p["lon"], p["lat"], SEA_PARAMS)
+        times, values = parse_coverage_series(data, SEA_PARAMS)
+        cache["sea"][p["name"]] = {
+            "times": times,
+            "values": values,
+            "lon": p["lon"],
+            "lat": p["lat"],
+        }
 
     return cache
 
 
-def build_time_pool(cache):
-    pool = []
-    for iid, block in cache.items():
-        times = block["ice"]["source"]["times"]
-        for t in times:
-            pool.append({"instanceId": iid, "validTime": t, "dt": parse_iso(t)})
-
-    uniq = {}
-    for item in pool:
-        uniq[(item["instanceId"], item["validTime"])] = item
-    return sorted(uniq.values(), key=lambda x: x["dt"])
-
-
-def choose_nearest_distinct(pool):
-    now_dt = datetime.now(timezone.utc)
-    targets = {
-        "now": now_dt,
-        "m6": now_dt - timedelta(hours=6),
-        "m12": now_dt - timedelta(hours=12),
-    }
-
-    chosen = {}
-    used = set()
-
-    for key in ["now", "m6", "m12"]:
-        best = None
-        best_diff = None
-
-        for c in pool:
-            k = (c["instanceId"], c["validTime"])
-            if k in used:
-                continue
-
-            diff_h = abs((c["dt"] - targets[key]).total_seconds()) / 3600.0
-            if diff_h > TIME_TOLERANCE_HOURS:
-                continue
-
-            if best is None or diff_h < best_diff:
-                best = c
-                best_diff = diff_h
-
-        chosen[key] = best
-        if best is not None:
-            used.add((best["instanceId"], best["validTime"]))
-
-    count = sum(1 for v in chosen.values() if v is not None)
-    if count == 3:
-        status = "ok"
-    elif count == 2:
-        status = "partial"
-    else:
-        status = "insufficient_distinct_steps"
-
-    return chosen, status
-
-
-def extract_point_values(cache, instance_id, point_type, point_name, valid_time):
-    block = cache[instance_id][point_type][point_name]
-    times = block["times"]
+def extract_point_values(series_block, point_name, idx):
+    block = series_block[point_name]
     values = block["values"]
-
-    try:
-        idx = times.index(valid_time)
-    except ValueError:
-        return None
-
     out = {}
     for k, arr in values.items():
         out[k] = safe_get(arr, idx)
@@ -337,12 +297,9 @@ def centroid_low(candidates):
     return cp, clon, clat, nearest_name
 
 
-def fields_for(cache, choice):
-    if choice is None:
+def fields_for_idx(cache, idx):
+    if idx is None:
         return None
-
-    iid = choice["instanceId"]
-    vt = choice["validTime"]
 
     pressure_vals = []
     temp_vals = []
@@ -350,13 +307,7 @@ def fields_for(cache, choice):
     quality_flags = []
 
     for name in ["source", "mid", "mouth"]:
-        vals = extract_point_values(cache, iid, "ice", name, vt)
-        if not vals:
-            pressure_vals.append(None)
-            temp_vals.append(None)
-            wind_vals.append(None)
-            continue
-
+        vals = extract_point_values(cache["ice"], name, idx)
         p = vals.get("pressure-sealevel")
         t = vals.get("temperature-2m")
         w = vals.get("wind-speed-100m")
@@ -388,13 +339,10 @@ def fields_for(cache, choice):
     sea_temps = []
 
     for name in ["W1", "W2", "W3", "C1", "C2", "E1", "E2"]:
-        vals = extract_point_values(cache, iid, "sea", name, vt)
-        if not vals:
-            continue
-
+        vals = extract_point_values(cache["sea"], name, idx)
         p = vals.get("pressure-sealevel")
         t = vals.get("temperature-2m")
-        meta = cache[iid]["sea"][name]
+        meta = cache["sea"][name]
 
         if is_num(p):
             sea_candidates.append({
@@ -487,19 +435,30 @@ def main():
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
     history = load_json(HISTORY_FILE, [])
 
-    instances = list_instances()
-    latest = instances[-1]
+    latest = list_instances()[-1]
+    cache = collect_latest_instance_series(latest)
 
-    cache = collect_all_point_data(instances)
-    pool = build_time_pool(cache)
-    chosen, trend_status = choose_nearest_distinct(pool)
+    # Bruk DMI-serien ved source-punktet som felles tidsakse
+    base_times = cache["ice"]["source"]["times"]
 
-    if chosen["now"] is None:
-        raise RuntimeError("Fant ikke gyldig now-tid i DMI-data.")
+    idx_now, time_now, diff_now = idx_at(base_times, now_dt, off_hours=0)
+    idx_m6, time_m6, diff_m6 = idx_at(base_times, now_dt, off_hours=6)
+    idx_m12, time_m12, diff_m12 = idx_at(base_times, now_dt, off_hours=12)
 
-    now_fields = fields_for(cache, chosen["now"])
-    m6_fields = fields_for(cache, chosen["m6"])
-    m12_fields = fields_for(cache, chosen["m12"])
+    count = sum(1 for x in [idx_now, idx_m6, idx_m12] if x is not None)
+    if count == 3:
+        trend_status = "ok"
+    elif count == 2:
+        trend_status = "partial"
+    else:
+        trend_status = "insufficient_distinct_steps"
+
+    if idx_now is None:
+        raise RuntimeError("Fant ikke gyldig now-tid i DMI-serien.")
+
+    now_fields = fields_for_idx(cache, idx_now)
+    m6_fields = fields_for_idx(cache, idx_m6)
+    m12_fields = fields_for_idx(cache, idx_m12)
 
     if now_fields is None:
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
@@ -582,7 +541,7 @@ def main():
     }
 
     history.append(snapshot)
-    history = history[-72:]
+    history = history[-96:]  # hold litt lenger buffer enn 72
     save_json(HISTORY_FILE, history)
 
     prev_24h = history_prev(history[:-1], 24)
@@ -591,7 +550,6 @@ def main():
     ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
     ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
 
-    # Nytt: kuldetrend på isen
     ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else ice_temp_c
     ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else ice_temp_c
 
@@ -773,11 +731,9 @@ def main():
             "trendDataStatus": trend_status,
             "qualityFlags": sorted(set(quality_flags)),
             "selectedTimes": {
-                k: None if v is None else {
-                    "instanceId": v["instanceId"],
-                    "validTime": v["validTime"],
-                }
-                for k, v in chosen.items()
+                "now": {"validTime": time_now, "diffHours": round(diff_now, 2)} if time_now else None,
+                "m6": {"validTime": time_m6, "diffHours": round(diff_m6, 2)} if time_m6 else None,
+                "m12": {"validTime": time_m12, "diffHours": round(diff_m12, 2)} if time_m12 else None,
             },
             "usedIcePressurePoints": now_fields["usedIcePressurePoints"],
             "usedIceTempPoints": now_fields["usedIceTempPoints"],
@@ -796,7 +752,7 @@ def main():
     print("Updated data.json/history.json")
     print("trendDataStatus:", trend_status)
     if quality_flags:
-        print("qualityFlags:", quality_flags)
+        print("qualityFlags:", sorted(set(quality_flags)))
 
 
 if __name__ == "__main__":
