@@ -13,9 +13,9 @@ LOCATION_NAME = "TASIILAQ"
 DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 
-REQUEST_TIMEOUT = 45
-REQUEST_SLEEP = 0.8
-REQUEST_RETRIES = 4
+REQUEST_TIMEOUT = 28
+REQUEST_SLEEP = 0.5
+REQUEST_RETRIES = 3
 TIME_TOLERANCE_HOURS = 2.75
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
@@ -117,7 +117,7 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
             r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
 
             if r.status_code == 429:
-                wait = 10 + attempt * 8
+                wait = 5 + attempt * 6
                 print(f"DMI rate limit (429). Waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -127,19 +127,19 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
 
         except requests.exceptions.ReadTimeout as e:
             last_err = e
-            wait = 6 + attempt * 6
+            wait = 4 + attempt * 4
             print(f"DMI read timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except requests.exceptions.ConnectTimeout as e:
             last_err = e
-            wait = 6 + attempt * 6
+            wait = 4 + attempt * 4
             print(f"DMI connect timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except Exception as e:
             last_err = e
-            wait = 2 + attempt * 3
+            wait = 2 + attempt * 2
             print(f"DMI request failed: {type(e).__name__}. Waiting {wait}s...")
             time.sleep(wait)
 
@@ -199,10 +199,7 @@ def parse_coverage_series(data, parameter_names):
     return times, values
 
 
-def collect_recent_instance_series(instance_ids):
-    """
-    Hent de siste 3 instance-idene og slå sammen seriene per punkt.
-    """
+def build_empty_cache():
     merged = {"ice": {}, "sea": {}}
 
     for p in ICE_POINTS:
@@ -219,53 +216,51 @@ def collect_recent_instance_series(instance_ids):
             "rows": []
         }
 
-    for iid in instance_ids[-3:]:
-        print(f"Fetching DMI series for instance {iid}")
+    return merged
 
-        for p in ICE_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
-            times, values = parse_coverage_series(data, ICE_PARAMS)
-            rows = merged["ice"][p["name"]]["rows"]
 
-            for i, t in enumerate(times):
-                rows.append({
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-                    "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
-                })
+def append_instance_to_cache(cache, iid):
+    print(f"Fetching DMI series for instance {iid}")
 
-        for p in SEA_POINTS:
-            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
-            times, values = parse_coverage_series(data, SEA_PARAMS)
-            rows = merged["sea"][p["name"]]["rows"]
+    for p in ICE_POINTS:
+        data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+        times, values = parse_coverage_series(data, ICE_PARAMS)
+        rows = cache["ice"][p["name"]]["rows"]
 
-            for i, t in enumerate(times):
-                rows.append({
-                    "instanceId": iid,
-                    "validTime": t,
-                    "dt": parse_iso(t),
-                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-                })
+        for i, t in enumerate(times):
+            rows.append({
+                "instanceId": iid,
+                "validTime": t,
+                "dt": parse_iso(t),
+                "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
+            })
 
-    # dedupe per point on validTime, keep latest instance if duplicates
+    for p in SEA_POINTS:
+        data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+        times, values = parse_coverage_series(data, SEA_PARAMS)
+        rows = cache["sea"][p["name"]]["rows"]
+
+        for i, t in enumerate(times):
+            rows.append({
+                "instanceId": iid,
+                "validTime": t,
+                "dt": parse_iso(t),
+                "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+            })
+
+    # dedupe per point
     for block_type in ["ice", "sea"]:
-        for name, block in merged[block_type].items():
+        for block in cache[block_type].values():
             dedup = {}
             for row in block["rows"]:
                 dedup[row["validTime"]] = row
             block["rows"] = sorted(dedup.values(), key=lambda x: x["dt"])
 
-    return merged
-
 
 def build_master_time_axis(cache):
-    """
-    Bruk union av alle tider fra alle punkter.
-    """
     dedup = {}
     for block_type in ["ice", "sea"]:
         for block in cache[block_type].values():
@@ -478,14 +473,41 @@ def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
     )
 
 
+def pick_needed_instances(instance_ids, now_dt):
+    """
+    Strømlinjeformet strategi:
+    - prøv nyeste instance
+    - hvis den ikke dekker -12t, legg til nest nyeste
+    - hvis fortsatt ikke nok, legg til tredje nyeste
+    """
+    ids = instance_ids[-3:]
+    selected = []
+    cache = build_empty_cache()
+
+    for iid in reversed(ids):
+        append_instance_to_cache(cache, iid)
+        selected.append(iid)
+
+        axis = build_master_time_axis(cache)
+        valid_now, _, _ = idx_at(axis, now_dt, off_hours=0)
+        valid_m6, _, _ = idx_at(axis, now_dt, off_hours=6)
+        valid_m12, _, _ = idx_at(axis, now_dt, off_hours=12)
+
+        if valid_now and valid_m6 and valid_m12:
+            break
+
+    selected.sort()
+    return cache, selected
+
+
 def main():
     now_dt = datetime.now(timezone.utc)
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
     history = load_json(HISTORY_FILE, [])
 
-    latest_instances = list_instances()
-    cache = collect_recent_instance_series(latest_instances)
-    latest = latest_instances[-1]
+    all_instances = list_instances()
+    cache, used_instances = pick_needed_instances(all_instances, now_dt)
+    latest = all_instances[-1]
 
     master_axis = build_master_time_axis(cache)
 
@@ -573,8 +595,9 @@ def main():
             quality_flags.append("sea_min_motion_high")
 
     ice_pressure_anom_now = ice_pressure - ICE_PRESSURE_NORMAL_HPA
-    dT_coast_ice = max(0.0, (now_fields["seaTempC"] if is_num(now_fields["seaTempC"]) else 0.0) - (ice_temp_c if is_num(ice_temp_c) else 0.0))
-    cold_support_now = max(0.0, -(ice_temp_c if is_num(ice_temp_c) else 0.0))
+    sea_temp_now = now_fields["seaTempC"] if is_num(now_fields["seaTempC"]) else None
+    dT_coast_ice = max(0.0, sea_temp_now - ice_temp_c) if is_num(sea_temp_now) and is_num(ice_temp_c) else None
+    cold_support_now = max(0.0, -ice_temp_c) if is_num(ice_temp_c) else None
     sea_low_depth = max(0.0, 1000.0 - sea_pressure)
 
     snapshot = {
@@ -585,8 +608,8 @@ def main():
         "gradient": round(gradient, 1),
         "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
         "icePressureAnomNow": round(ice_pressure_anom_now, 1),
-        "coldSupportNow": round(cold_support_now, 1),
-        "dTCoastIceNow": round(dT_coast_ice, 1),
+        "coldSupportNow": round(cold_support_now, 1) if is_num(cold_support_now) else None,
+        "dTCoastIceNow": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
         "sector": sector,
     }
 
@@ -600,8 +623,6 @@ def main():
     ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
     ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
 
-    # Kvalitetssikret kuldetrend:
-    # bare beregn hvis historiske temp-punkter faktisk finnes
     ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else None
     ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else None
 
@@ -771,6 +792,7 @@ def main():
         "derived": {
             "watch": watch,
             "sector": sector,
+            "usedInstanceIds": used_instances,
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
             "seaMinLat": round(now_fields["seaMinLat"], 3) if is_num(now_fields["seaMinLat"]) else None,
             "seaCentroidPressure": round(now_fields["seaCentroidPressure"], 1) if is_num(now_fields["seaCentroidPressure"]) else None,
@@ -812,6 +834,7 @@ def main():
 
     save_json(DATA_FILE, payload)
     print("Updated data.json/history.json")
+    print("used instances:", used_instances)
     print("trendDataStatus:", trend_status)
     if quality_flags:
         print("qualityFlags:", sorted(set(quality_flags)))
