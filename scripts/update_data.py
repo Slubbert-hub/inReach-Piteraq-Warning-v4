@@ -59,7 +59,7 @@ ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
 TREND_TOLERANCES = {
-    "h6":  timedelta(hours=1.5),
+    "h6": timedelta(hours=1.5),
     "h12": timedelta(hours=2.0),
     "h24": timedelta(hours=3.0),
     "h72": timedelta(hours=6.0),
@@ -604,6 +604,8 @@ def build_snapshot(snapshot_dt, fields):
         "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
         "ventilIndex": round(fields["ventilIndex"], 1) if is_num(fields["ventilIndex"]) else None,
         "coastGate": round(fields["coastGate"], 1) if is_num(fields["coastGate"]) else None,
+        "seaMinLon": round(fields["seaMinLon"], 3) if is_num(fields["seaMinLon"]) else None,
+        "seaMinLat": round(fields["seaMinLat"], 3) if is_num(fields["seaMinLat"]) else None,
         "icePressureAnomNow": round(ice_pressure_anom_now, 1) if is_num(ice_pressure_anom_now) else None,
         "coldSupportNow": round(cold_support_now, 1) if is_num(cold_support_now) else None,
         "dTCoastIceNow": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
@@ -656,8 +658,6 @@ def list_missing_backfill_targets(history, now_dt):
     checks = [
         ("h6",  now_dt - timedelta(hours=6),  ["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]),
         ("h12", now_dt - timedelta(hours=12), ["icePressure", "seaPressure", "ventilIndex", "coastGate"]),
-        ("h24", now_dt - timedelta(hours=24), ["iceTempC", "icePressure"]),
-        ("h72", now_dt - timedelta(hours=72), ["iceTempC", "icePressure"]),
     ]
 
     for label, target_dt, keys in checks:
@@ -668,18 +668,15 @@ def list_missing_backfill_targets(history, now_dt):
     return targets
 
 
-def backfill_missing_targets(history, instance_ids, targets):
-    if not targets:
+def backfill_missing_targets(history, older_instance_ids, targets):
+    if not targets or not older_instance_ids:
         return history, {}
 
     cache = build_empty_cache()
     fetch_errors = {}
 
-    # Kun ved hull: hent noen få nyere instances for å fylle manglende punkter
-    # 4 instances holder normalt for 12t, men vi lar 6 siste være sikkerhet for 24/72-proxyhull.
-    recent_ids = instance_ids[-6:]
-
-    for iid in reversed(recent_ids):
+    # Bare eldre instances, ikke nyeste igjen
+    for iid in reversed(older_instance_ids):
         errs = append_instance_to_cache(cache, iid)
         if errs:
             fetch_errors[iid] = errs
@@ -688,7 +685,8 @@ def backfill_missing_targets(history, instance_ids, targets):
 
     added = 0
     for label, target_dt in targets:
-        valid_time, dt_found, diff_h = find_valid_time(axis, target_dt, tolerance_hours=max(3.0, TREND_TOLERANCES[label].total_seconds() / 3600.0))
+        tolerance_hours = max(3.0, TREND_TOLERANCES[label].total_seconds() / 3600.0)
+        valid_time, dt_found, diff_h = find_valid_time(axis, target_dt, tolerance_hours=tolerance_hours)
         if valid_time is None:
             continue
 
@@ -735,8 +733,8 @@ def build_payload(now_dt):
 
     instance_ids = list_instances()
     latest = instance_ids[-1]
+    older_instance_ids = instance_ids[:-1][-5:]  # bare eldre, maks 5 for smal backfill
 
-    # NORMAL DRIFT: bare nyeste instance
     cache = build_empty_cache()
     fetch_errors_now = append_instance_to_cache(cache, latest)
 
@@ -753,12 +751,11 @@ def build_payload(now_dt):
     history.append(current_snapshot)
     history = sort_and_dedup_history(history)
 
-    # BACKFILL bare ved hull i history
     missing_targets = list_missing_backfill_targets(history, dt_now)
     fetch_errors_backfill = {}
     if missing_targets:
         print("Missing history targets:", [(lbl, iso_z(tdt)) for lbl, tdt in missing_targets])
-        history, fetch_errors_backfill = backfill_missing_targets(history, instance_ids, missing_targets)
+        history, fetch_errors_backfill = backfill_missing_targets(history, older_instance_ids, missing_targets)
 
     save_json(HISTORY_FILE, history)
 
@@ -767,7 +764,6 @@ def build_payload(now_dt):
         fetch_errors[latest] = fetch_errors_now
     fetch_errors.update(fetch_errors_backfill)
 
-    # Finn historiske referanser fra history, ikke DMI
     snap_6 = find_history_snapshot(
         history, dt_now - timedelta(hours=6), TREND_TOLERANCES["h6"],
         required_keys=["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]
