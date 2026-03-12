@@ -53,7 +53,6 @@ WEST_NAMES = ["W1", "W2", "W3"]
 MID_NAMES = ["C1", "C2", "M1", "M2", "M3"]
 EAST_NAMES = ["E1", "E2"]
 ALL_STRAIT_NAMES = WEST_NAMES + MID_NAMES + EAST_NAMES
-ALL_SEA_NAMES = ALL_STRAIT_NAMES + ["K1", "K2"]
 
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
@@ -652,54 +651,74 @@ def find_history_snapshot(history, target_dt, tolerance, required_keys=None):
     return best
 
 
-def list_missing_backfill_targets(history, now_dt):
-    targets = []
+def missing_target_labels(history, now_dt):
+    labels = []
 
     checks = [
-        ("h6",  now_dt - timedelta(hours=6),  ["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]),
+        ("h6", now_dt - timedelta(hours=6), ["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]),
         ("h12", now_dt - timedelta(hours=12), ["icePressure", "seaPressure", "ventilIndex", "coastGate"]),
     ]
 
     for label, target_dt, keys in checks:
         snap = find_history_snapshot(history, target_dt, TREND_TOLERANCES[label], required_keys=keys)
         if snap is None:
-            targets.append((label, target_dt))
+            labels.append(label)
 
-    return targets
+    return labels
 
 
-def backfill_missing_targets(history, older_instance_ids, targets):
-    if not targets or not older_instance_ids:
+def backfill_until_targets_found(history, older_instance_ids, missing_labels):
+    if not missing_labels or not older_instance_ids:
         return history, {}
 
     cache = build_empty_cache()
     fetch_errors = {}
+    remaining = set(missing_labels)
 
-    # Bare eldre instances, ikke nyeste igjen
+    target_times = {
+        "h6": None,
+        "h12": None,
+    }
+
     for iid in reversed(older_instance_ids):
         errs = append_instance_to_cache(cache, iid)
         if errs:
             fetch_errors[iid] = errs
 
-    axis = build_master_time_axis(cache)
+        axis = build_master_time_axis(cache)
+        added_this_round = 0
 
-    added = 0
-    for label, target_dt in targets:
-        tolerance_hours = max(3.0, TREND_TOLERANCES[label].total_seconds() / 3600.0)
-        valid_time, dt_found, diff_h = find_valid_time(axis, target_dt, tolerance_hours=tolerance_hours)
-        if valid_time is None:
-            continue
+        for label in list(remaining):
+            hours_back = 6 if label == "h6" else 12
+            # referanse mot nåtid i denne kjøringen finnes i history som siste snapshot
+            now_snap = history[-1] if history else None
+            if not now_snap:
+                continue
+            now_dt_hist = parse_iso(now_snap["t"])
+            target_dt = now_dt_hist - timedelta(hours=hours_back)
 
-        fields = fields_for_valid_time(cache, valid_time)
-        if not fields:
-            continue
+            tolerance_hours = max(3.0, TREND_TOLERANCES[label].total_seconds() / 3600.0)
+            valid_time, dt_found, diff_h = find_valid_time(axis, target_dt, tolerance_hours=tolerance_hours)
+            if valid_time is None:
+                continue
 
-        snapshot = build_snapshot(dt_found, fields)
-        history.append(snapshot)
-        added += 1
+            fields = fields_for_valid_time(cache, valid_time)
+            if not fields:
+                continue
 
-    history = sort_and_dedup_history(history)
-    print(f"Backfill added {added} snapshots")
+            snapshot = build_snapshot(dt_found, fields)
+            history.append(snapshot)
+            history = sort_and_dedup_history(history)
+            remaining.discard(label)
+            added_this_round += 1
+
+        if added_this_round:
+            print(f"Backfill added {added_this_round} snapshots after instance {iid}")
+
+        if not remaining:
+            print("Backfill stopping early: all missing targets filled")
+            break
+
     return history, fetch_errors
 
 
@@ -733,7 +752,7 @@ def build_payload(now_dt):
 
     instance_ids = list_instances()
     latest = instance_ids[-1]
-    older_instance_ids = instance_ids[:-1][-5:]  # bare eldre, maks 5 for smal backfill
+    older_instance_ids = instance_ids[:-1][-5:]
 
     cache = build_empty_cache()
     fetch_errors_now = append_instance_to_cache(cache, latest)
@@ -751,11 +770,11 @@ def build_payload(now_dt):
     history.append(current_snapshot)
     history = sort_and_dedup_history(history)
 
-    missing_targets = list_missing_backfill_targets(history, dt_now)
+    missing_labels = missing_target_labels(history, dt_now)
     fetch_errors_backfill = {}
-    if missing_targets:
-        print("Missing history targets:", [(lbl, iso_z(tdt)) for lbl, tdt in missing_targets])
-        history, fetch_errors_backfill = backfill_missing_targets(history, older_instance_ids, missing_targets)
+    if missing_labels:
+        print("Missing history targets:", missing_labels)
+        history, fetch_errors_backfill = backfill_until_targets_found(history, older_instance_ids, missing_labels)
 
     save_json(HISTORY_FILE, history)
 
