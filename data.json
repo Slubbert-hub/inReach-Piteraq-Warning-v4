@@ -1,11 +1,11 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-12 00:53 UTC",
+    "updatedAt": "2026-03-12 01:30 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
-    "instanceId": "2026-03-11T210000Z"
+    "forecastInfo": "Update failed: ReadTimeout",
+    "instanceId": "-"
   },
   "inputs": {
     "icePressure": 991.3,
@@ -50,10 +50,9 @@
     "accG": 1.0,
     "accS": 1.7,
     "accUncertain": true,
-    "trendDataStatus": "partial",
+    "trendDataStatus": "error: ReadTimeout",
     "qualityFlags": [
-      "acceleration_estimated",
-      "partial_trend_window"
+      "hard_failure"
     ],
     "selectedTimes": {
       "now": {
@@ -74,7 +73,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "PITERAQ LOW",
-    "message": "TASIILAQ GRN 12-24T T? RES7 TRG17 CPL44 ICE991.3 SEA977.7 GR13.6 d6+1.0 d12NA SF6+1.7 SF12NA DT41 CT24+0 CT72+0 AG1? AS2?"
+    "phase": "ERROR",
+    "message": "TASIILAQ ERROR DMI ReadTimeout"
   }
 }
