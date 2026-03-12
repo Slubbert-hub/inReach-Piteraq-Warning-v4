@@ -13,7 +13,7 @@
       padding:20px;
     }
     .wrap{
-      max-width:980px;
+      max-width:1100px;
       margin:0 auto;
     }
     h1{
@@ -86,7 +86,7 @@
       font-weight:700;
       white-space:pre-wrap;
       word-break:break-word;
-      line-height:1.15;
+      line-height:1.2;
       margin-top:10px;
     }
     .btnrow{
@@ -103,6 +103,7 @@
       font-weight:800;
       color:#fff;
       background:#16a34a;
+      cursor:pointer;
     }
     .btn-blue{
       background:#3b82f6;
@@ -249,6 +250,18 @@
         <div class="small" id="katabaticSub">-</div>
       </div>
 
+      <div class="card">
+        <div class="label">Kuldetrend 24t</div>
+        <div class="mid" id="iceTempTrend24hLine">-</div>
+        <div class="small">negativ verdi = kaldere is siste 24 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Kuldetrend 72t</div>
+        <div class="mid" id="iceTempTrend72hLine">-</div>
+        <div class="small">negativ verdi = kaldere is siste 72 timer</div>
+      </div>
+
     </div>
   </div>
 
@@ -386,6 +399,11 @@
           ? `cold72 ${fmt(derived.coldSupport72h, " °C")}`
           : "cold72 mangler data";
         document.getElementById("katabaticSub").innerText = cold72Text;
+
+        document.getElementById("iceTempTrend24hLine").innerText =
+          fmtSigned(inputs.iceTempTrend24h, " °C");
+        document.getElementById("iceTempTrend72hLine").innerText =
+          fmtSigned(inputs.iceTempTrend72h, " °C");
 
         if (manual) {
           status.innerText = `Lastet: ${meta.updatedAt || "-"}`;
