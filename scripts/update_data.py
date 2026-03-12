@@ -20,21 +20,22 @@ TIME_TOLERANCE_HOURS = 2.75
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
-# Operativ piteraq-korridor på isen
+# 3 punkter i operativ piteraq-korridor på isen
 ICE_POINTS = [
     {"name": "source", "lon": -42.4, "lat": 69.0},
     {"name": "mid",    "lon": -41.3, "lat": 68.6},
     {"name": "mouth",  "lon": -40.3, "lat": 68.2},
 ]
 
-# 5-punkts havfelt i Danmark-stredet / utenfor Ammassalik
-# Primærmodell bruker minimumstrykk. Sentroid brukes kun som kontroll.
+# 7-punkts havfelt, forskjøvet 0.7° vest
 SEA_POINTS = [
-    {"name": "SW", "lon": -30.2, "lat": 64.9},
-    {"name": "S",  "lon": -29.0, "lat": 65.3},
-    {"name": "C",  "lon": -28.0, "lat": 65.9},
-    {"name": "N",  "lon": -26.9, "lat": 66.5},
-    {"name": "NE", "lon": -25.8, "lat": 67.0},
+    {"name": "W1", "lon": -34.9, "lat": 62.8},
+    {"name": "W2", "lon": -33.7, "lat": 63.8},
+    {"name": "W3", "lon": -32.5, "lat": 64.8},
+    {"name": "C1", "lon": -30.5, "lat": 64.6},
+    {"name": "C2", "lon": -31.1, "lat": 65.4},
+    {"name": "E1", "lon": -29.1, "lat": 65.8},
+    {"name": "E2", "lon": -27.5, "lat": 66.4},
 ]
 
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
@@ -100,6 +101,14 @@ def compact_score_tag(prefix, value, uncertain=False):
         return f"{prefix}?"
     iv = int(round(value))
     return f"{prefix}{iv}{'?' if uncertain else ''}"
+
+
+def compact_temp_trend_tag(prefix, value):
+    # Negativ verdi = kaldere
+    if not is_num(value):
+        return f"{prefix}?"
+    iv = int(round(value))
+    return f"{prefix}{iv:+d}"
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
@@ -203,14 +212,20 @@ def collect_all_point_data(instances):
             data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
             times, values = parse_coverage_series(data, ICE_PARAMS)
             cache[iid]["ice"][p["name"]] = {
-                "times": times, "values": values, "lon": p["lon"], "lat": p["lat"]
+                "times": times,
+                "values": values,
+                "lon": p["lon"],
+                "lat": p["lat"],
             }
 
         for p in SEA_POINTS:
             data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
             times, values = parse_coverage_series(data, SEA_PARAMS)
             cache[iid]["sea"][p["name"]] = {
-                "times": times, "values": values, "lon": p["lon"], "lat": p["lat"]
+                "times": times,
+                "values": values,
+                "lon": p["lon"],
+                "lat": p["lat"],
             }
 
     return cache
@@ -372,7 +387,7 @@ def fields_for(cache, choice):
     sea_candidates = []
     sea_temps = []
 
-    for name in ["SW", "S", "C", "N", "NE"]:
+    for name in ["W1", "W2", "W3", "C1", "C2", "E1", "E2"]:
         vals = extract_point_values(cache, iid, "sea", name, vt)
         if not vals:
             continue
@@ -395,10 +410,7 @@ def fields_for(cache, choice):
     if not sea_candidates:
         return None
 
-    # Primær: minimumstrykk
     sea_min = min(sea_candidates, key=lambda x: x["pressure"])
-
-    # Sekundær: sentroid kun som kontrollmål
     centroid_pressure, centroid_lon, centroid_lat, centroid_sector = centroid_low(sea_candidates)
 
     spread = None
@@ -411,7 +423,7 @@ def fields_for(cache, choice):
 
     if sea_temps:
         sea_temp_c = avg(sea_temps)
-        if len(sea_temps) < 5:
+        if len(sea_temps) < 7:
             quality_flags.append("missing_sea_temperature_partial")
     else:
         quality_flags.append("missing_sea_temperature_all")
@@ -502,7 +514,6 @@ def main():
     ice_temp_c = now_fields["iceTempC"]
     ice_wind = now_fields["iceWind"]
 
-    # Primær sjøvariabel er minimumstrykk
     sea_pressure = now_fields["seaPressureMin"]
     sector = now_fields["seaMinSector"]
 
@@ -544,7 +555,6 @@ def main():
     if acc_uncertain and "acceleration_estimated" not in quality_flags:
         quality_flags.append("acceleration_estimated")
 
-    # Kontroll: bevegelse i minimumspunktet
     sea_motion_km6 = None
     if m6_fields and is_num(m6_fields["seaMinLon"]) and is_num(m6_fields["seaMinLat"]):
         dx = (now_fields["seaMinLon"] - m6_fields["seaMinLon"]) * math.cos(math.radians(now_fields["seaMinLat"])) * 111.0
@@ -561,6 +571,7 @@ def main():
     snapshot = {
         "t": now_dt.isoformat(),
         "icePressure": round(ice_pressure, 1),
+        "iceTempC": round(ice_temp_c, 1) if is_num(ice_temp_c) else None,
         "seaPressure": round(sea_pressure, 1),
         "gradient": round(gradient, 1),
         "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
@@ -580,6 +591,18 @@ def main():
     ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
     ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
 
+    # Nytt: kuldetrend på isen
+    ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else ice_temp_c
+    ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else ice_temp_c
+
+    ice_temp_trend_24h = (ice_temp_c - ice_temp_24h_ago) if is_num(ice_temp_c) and is_num(ice_temp_24h_ago) else None
+    ice_temp_trend_72h = (ice_temp_c - ice_temp_72h_ago) if is_num(ice_temp_c) and is_num(ice_temp_72h_ago) else None
+
+    if is_num(ice_temp_trend_24h) and ice_temp_trend_24h <= -3.0:
+        quality_flags.append("cold_reservoir_building_24h")
+    if is_num(ice_temp_trend_72h) and ice_temp_trend_72h <= -5.0:
+        quality_flags.append("cold_reservoir_building_72h")
+
     ice_pressure_trend_24h = ice_pressure - ice_24h_ago
     ice_pressure_trend_72h = ice_pressure - ice_72h_ago
 
@@ -592,16 +615,26 @@ def main():
     dT_72_mean = avg(dT_72) if dT_72 else 0.0
 
     reservoir = 100 * (
-        0.55 * norm(ice_anom_72_mean, -12, 12)
+        0.50 * norm(ice_anom_72_mean, -12, 12)
         + 0.20 * norm(ice_pressure_anom_now, -12, 12)
         + 0.15 * norm(ice_pressure_trend_24h, -3, 8)
         + 0.10 * norm(ice_pressure_trend_72h, -5, 12)
+        + 0.05 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else 0.0), 0, 8)
     )
     reservoir = clamp(reservoir, 0, 100)
     if ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
-    sector_score = {"SW": 85, "S": 90, "C": 70, "N": 45, "NE": 35}.get(sector, 25)
+    sector_score = {
+        "W1": 90,
+        "W2": 92,
+        "W3": 88,
+        "C1": 78,
+        "C2": 68,
+        "E1": 50,
+        "E2": 35,
+    }.get(sector, 25)
+
     coupling = 100 * (
         0.60 * (sector_score / 100.0)
         + 0.25 * norm(sea_low_depth, 5, 30)
@@ -610,11 +643,14 @@ def main():
     coupling = clamp(coupling, 0, 100)
 
     thermal_component = 100 * (
-        0.55 * norm(dT_72_mean, 3, 20)
-        + 0.30 * norm(cold_72_mean, 5, 25)
+        0.45 * norm(dT_72_mean, 3, 20)
+        + 0.25 * norm(cold_72_mean, 5, 25)
         + 0.15 * norm(dT_coast_ice, 10, 35)
+        + 0.10 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else 0.0), 0, 8)
+        + 0.05 * norm(-(ice_temp_trend_72h if is_num(ice_temp_trend_72h) else 0.0), 0, 12)
     )
     thermal_component = clamp(thermal_component, 0, 100)
+
     reservoir_factor = 0.35 + 0.65 * (reservoir / 100.0)
     katabatic_potential = clamp(thermal_component * reservoir_factor, 0, 100)
 
@@ -665,6 +701,8 @@ def main():
     trend_tag = "" if trend_status == "ok" else " T?"
     ag_tag = compact_score_tag("AG", acc_g, uncertain=acc_uncertain)
     as_tag = compact_score_tag("AS", acc_s, uncertain=acc_uncertain)
+    ct24_tag = compact_temp_trend_tag("CT24", ice_temp_trend_24h)
+    ct72_tag = compact_temp_trend_tag("CT72", ice_temp_trend_72h)
 
     message = (
         f"{LOCATION_NAME} {level} {horizon}{trend_tag} "
@@ -676,6 +714,7 @@ def main():
         f"SF6{fmt_msg_num(sf6, signed=True)} "
         f"SF12{fmt_msg_num(sf12, signed=True)} "
         f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
+        f"{ct24_tag} {ct72_tag} "
         f"{ag_tag} {as_tag}"
     )
 
@@ -699,6 +738,8 @@ def main():
             "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
             "iceWindTrend6h": round(ice_wind_trend_6h, 1) if is_num(ice_wind_trend_6h) else None,
             "coastIceDeltaT": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
+            "iceTempTrend24h": round(ice_temp_trend_24h, 1) if is_num(ice_temp_trend_24h) else None,
+            "iceTempTrend72h": round(ice_temp_trend_72h, 1) if is_num(ice_temp_trend_72h) else None,
         },
         "scores": {
             "reservoir": int(round(reservoir)),
@@ -730,7 +771,7 @@ def main():
             "accS": round(acc_s, 1) if is_num(acc_s) else None,
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
-            "qualityFlags": quality_flags,
+            "qualityFlags": sorted(set(quality_flags)),
             "selectedTimes": {
                 k: None if v is None else {
                     "instanceId": v["instanceId"],
