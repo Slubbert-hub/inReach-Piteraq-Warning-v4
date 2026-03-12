@@ -1,89 +1,101 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-12 02:33 UTC",
+    "updatedAt": "2026-03-12 03:36 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
-    "instanceId": "2026-03-11T210000Z"
+    "instanceId": "2026-03-12T000000Z"
   },
   "inputs": {
-    "icePressure": 991.2,
-    "seaPressure": 976.0,
-    "gradient": 15.2,
-    "d6": 1.9,
-    "d12": 3.3,
-    "sf6": 2.8,
-    "sf12": 4.1,
-    "iceWind": 9.6,
-    "iceWindTrend6h": 3.4,
-    "coastIceDeltaT": 41.9,
+    "icePressure": 991.6,
+    "seaPressure": 976.1,
+    "gradient": 15.5,
+    "d6": 0.9,
+    "d12": -0.0,
+    "sf6": 1.1,
+    "sf12": 0.3,
+    "iceWind": 8.7,
+    "iceWindTrend6h": 2.5,
+    "coastIceDeltaT": 41.8,
     "iceTempTrend24h": null,
-    "iceTempTrend72h": null
+    "iceTempTrend72h": null,
+    "ventilIndex": 2.8,
+    "ventilD6": 1.2,
+    "ventilD12": 2.0
   },
   "scores": {
     "reservoir": 7,
-    "trigger": 23,
-    "coupling": 45,
-    "potential": 20,
-    "risk": 14
+    "trigger": 14,
+    "coupling": 35,
+    "potential": 16,
+    "risk": 9
   },
   "derived": {
     "watch": false,
     "sector": "E2",
     "usedInstanceIds": [
-      "2026-03-11T150000Z",
       "2026-03-11T180000Z",
-      "2026-03-11T210000Z"
+      "2026-03-11T210000Z",
+      "2026-03-12T000000Z"
     ],
     "seaMinLon": -27.5,
     "seaMinLat": 66.4,
-    "seaCentroidPressure": 977.2,
-    "seaCentroidLon": -29.353,
-    "seaCentroidLat": 65.599,
-    "seaCentroidSector": "E1",
-    "seaMinCentroidSpread": 1.1,
-    "seaMinMotionKm6": 240.2,
-    "icePressureAnomNow": -22.1,
-    "icePressureAnom72hMean": -20.9,
+    "seaCentroidPressure": 977.5,
+    "seaCentroidLon": -29.924,
+    "seaCentroidLat": 65.071,
+    "seaCentroidSector": "M3",
+    "seaMinCentroidSpread": 1.3,
+    "seaMinMotionKm6": 300.6,
+    "westMeanPressure": 980.2,
+    "midMeanPressure": 977.9,
+    "eastMeanPressure": 976.8,
+    "gateMid": 2.3,
+    "gateEast": 3.5,
+    "ventilIndex": 2.8,
+    "ventilD6": 1.2,
+    "ventilD12": 2.0,
+    "icePressureAnomNow": -21.6,
+    "icePressureAnom72hMean": -21.0,
     "icePressureTrend24h": 0.0,
     "icePressureTrend72h": 0.0,
-    "coldSupport72h": 37.5,
+    "coldSupport72h": 37.7,
     "katabaticPotential": 34,
-    "seaLowDepth": 24.0,
+    "seaLowDepth": 23.9,
     "gradientBoost": 0.0,
-    "accG": 0.4,
-    "accS": 1.5,
+    "accG": 1.8,
+    "accS": 1.8,
     "accUncertain": false,
     "trendDataStatus": "ok",
     "qualityFlags": [
       "missing_ice_temp_trend_24h",
       "missing_ice_temp_trend_72h",
+      "sea_field_spread_moderate",
       "sea_min_motion_high"
     ],
     "selectedTimes": {
       "now": {
-        "validTime": "2026-03-12T03:00:00.000Z",
-        "diffHours": 0.44
+        "validTime": "2026-03-12T04:00:00.000Z",
+        "diffHours": 0.39
       },
       "m6": {
-        "validTime": "2026-03-11T21:00:00.000Z",
-        "diffHours": 0.44
+        "validTime": "2026-03-11T22:00:00.000Z",
+        "diffHours": 0.39
       },
       "m12": {
-        "validTime": "2026-03-11T15:00:00.000Z",
-        "diffHours": 0.44
+        "validTime": "2026-03-11T18:00:00.000Z",
+        "diffHours": 2.39
       }
     },
     "usedIcePressurePoints": 3,
     "usedIceTempPoints": 3,
     "usedIceWindPoints": 3,
-    "usedSeaPressurePoints": 7,
-    "usedSeaTempPoints": 7
+    "usedSeaPressurePoints": 10,
+    "usedSeaTempPoints": 10
   },
   "output": {
     "level": "GRN",
     "phase": "PITERAQ LOW",
-    "message": "TASIILAQ GRN 12-24T RES7 TRG23 CPL45 ICE991.2 SEA976.0 GR15.2 d6+1.9 d12+3.3 SF6+2.8 SF12+4.1 DT42 CT24? CT72? AG0 AS2"
+    "message": "TASIILAQ GRN 12-24T RES7 TRG14 CPL35 ICE991.6 SEA976.1 GR15.5 d6+0.9 d12-0.0 SF6+1.1 SF12+0.3 DT42 CT24? CT72? VG3 AG2 AS2"
   }
 }
