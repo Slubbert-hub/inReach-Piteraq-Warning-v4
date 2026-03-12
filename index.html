@@ -13,7 +13,7 @@
       padding:20px;
     }
     .wrap{
-      max-width:1100px;
+      max-width:1200px;
       margin:0 auto;
     }
     h1{
@@ -173,13 +173,13 @@
       <div class="card">
         <div class="label">Trigger</div>
         <div class="mid" id="triggerLine">-</div>
-        <div class="small">gradient + trend + strait-fall + akselerasjon</div>
+        <div class="small">gradient + trend + strait-fall + akselerasjon + ventil</div>
       </div>
 
       <div class="card">
         <div class="label">Coupling</div>
         <div class="mid" id="couplingLine">-</div>
-        <div class="small">sektor + havlav + vindstøtte</div>
+        <div class="small">sektor + havlav + vindstøtte + ventil</div>
       </div>
 
       <div class="card">
@@ -234,6 +234,24 @@
         <div class="label">Akselerasjon</div>
         <div class="mid" id="accLine">-</div>
         <div class="small">AG = gradient · AS = strait</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Ventilindeks</div>
+        <div class="mid" id="ventilLine">-</div>
+        <div class="small">synoptisk åpning fra Grønland mot strait</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Ventil d6</div>
+        <div class="mid" id="ventilD6Line">-</div>
+        <div class="small">endring i ventil siste 6 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Ventil d12</div>
+        <div class="mid" id="ventilD12Line">-</div>
+        <div class="small">endring i ventil siste 12 timer</div>
       </div>
 
       <div class="card">
@@ -417,6 +435,10 @@
         document.getElementById("accLine").innerText =
           `AG ${accG}${accSuffix} · AS ${accS}${accSuffix}`;
 
+        document.getElementById("ventilLine").innerText = fmt(inputs.ventilIndex, " hPa");
+        document.getElementById("ventilD6Line").innerText = fmtSigned(inputs.ventilD6, " hPa");
+        document.getElementById("ventilD12Line").innerText = fmtSigned(inputs.ventilD12, " hPa");
+
         document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind, " m/s");
         document.getElementById("iceWindSub").innerText =
           `trend 6t ${fmtSigned(inputs.iceWindTrend6h, " m/s")}`;
@@ -467,4 +489,4 @@
     loadData(false);
   </script>
 </body>
-</html>
+        </html>
