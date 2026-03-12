@@ -144,10 +144,6 @@
       background:#312414;
       border:1px solid rgba(251,191,36,.35);
     }
-    .infoBox.error{
-      background:#341d22;
-      border:1px solid rgba(252,165,165,.28);
-    }
   </style>
 </head>
 <body>
@@ -159,6 +155,7 @@
       <div class="small" id="trendStatusLine"></div>
       <div class="small" id="qualityFlagsLine"></div>
       <div id="staleBox"></div>
+      <div class="small" id="historyLine"></div>
       <div class="small">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
       <div class="btnrow">
         <button class="btn" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
@@ -433,6 +430,23 @@
       box.innerHTML = "";
     }
 
+    function renderHistoryInfo(selectedTimes) {
+      const el = document.getElementById("historyLine");
+      if (!selectedTimes || typeof selectedTimes !== "object") {
+        el.innerHTML = "";
+        return;
+      }
+
+      const parts = [];
+      if (selectedTimes.now?.validTime) parts.push(`now: ${selectedTimes.now.validTime}`);
+      if (selectedTimes.h6_from_history) parts.push(`6t: ${selectedTimes.h6_from_history}`);
+      if (selectedTimes.h12_from_history) parts.push(`12t: ${selectedTimes.h12_from_history}`);
+      if (selectedTimes.h24_from_history) parts.push(`24t: ${selectedTimes.h24_from_history}`);
+      if (selectedTimes.h72_from_history) parts.push(`72t: ${selectedTimes.h72_from_history}`);
+
+      el.innerText = parts.length ? `Trendreferanser: ${parts.join(" · ")}` : "";
+    }
+
     function hasFlag(flags, name) {
       return Array.isArray(flags) && flags.includes(name);
     }
@@ -485,6 +499,7 @@
         renderTrendStatus(derived.trendDataStatus || "-");
         renderQualityFlags(flags);
         renderStaleInfo(meta);
+        renderHistoryInfo(derived.selectedTimes);
 
         document.getElementById("riskLine").innerText =
           `${output.level || "-"} · ${fmtInt(scores.risk, "/100")}`;
@@ -569,6 +584,7 @@
           `<span class="statuserror">${String(err)}</span>`;
         document.getElementById("qualityFlagsLine").innerHTML = "";
         document.getElementById("staleBox").innerHTML = "";
+        document.getElementById("historyLine").innerHTML = "";
         if (status) status.innerText = "Feil ved lasting av data.";
       } finally {
         if (manual && btn) {
@@ -581,4 +597,4 @@
     loadData(false);
   </script>
 </body>
-          </html>
+</html>
