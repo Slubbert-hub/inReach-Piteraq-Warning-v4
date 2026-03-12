@@ -18,8 +18,10 @@ CONNECT_TIMEOUT = 8
 READ_TIMEOUT = 40
 REQUEST_SLEEP = 0.2
 REQUEST_RETRIES = 3
+MAX_WORKERS = 3
+
 TIME_TOLERANCE_HOURS = 2.75
-MAX_WORKERS = 5
+HISTORY_KEEP = 144  # 6 døgn ved timekjøring
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
@@ -56,6 +58,13 @@ ALL_SEA_NAMES = ALL_STRAIT_NAMES + ["K1", "K2"]
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
 
+TREND_TOLERANCES = {
+    "h6":  timedelta(hours=1.5),
+    "h12": timedelta(hours=2.0),
+    "h24": timedelta(hours=3.0),
+    "h72": timedelta(hours=6.0),
+}
+
 
 def clamp(x, lo, hi):
     return max(lo, min(hi, x))
@@ -78,6 +87,10 @@ def kelvin_to_celsius(k):
 
 def parse_iso(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def iso_z(dt):
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def now_utc():
@@ -274,8 +287,12 @@ def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_
 def append_instance_to_cache(cache, iid):
     print(f"Fetching DMI series for instance {iid} with parallel point requests")
 
-    ice_results, ice_errors = fetch_points_parallel(iid, ICE_POINTS, ICE_PARAMS, max_workers=min(MAX_WORKERS, len(ICE_POINTS)))
-    sea_results, sea_errors = fetch_points_parallel(iid, SEA_POINTS + COAST_POINTS, SEA_PARAMS, max_workers=MAX_WORKERS)
+    ice_results, ice_errors = fetch_points_parallel(
+        iid, ICE_POINTS, ICE_PARAMS, max_workers=min(MAX_WORKERS, len(ICE_POINTS))
+    )
+    sea_results, sea_errors = fetch_points_parallel(
+        iid, SEA_POINTS + COAST_POINTS, SEA_PARAMS, max_workers=MAX_WORKERS
+    )
 
     all_errors = {}
     all_errors.update({f"ice:{k}": v for k, v in ice_errors.items()})
@@ -340,16 +357,15 @@ def build_master_time_axis(cache):
     return axis
 
 
-def idx_at(master_axis, target_dt, off_hours=0, tolerance_hours=TIME_TOLERANCE_HOURS):
+def find_valid_time(master_axis, target_dt, tolerance_hours=TIME_TOLERANCE_HOURS):
     if not master_axis:
         return None, None, None
 
-    desired = target_dt - timedelta(hours=off_hours)
     best = None
     best_diff = None
 
     for item in master_axis:
-        diff_h = abs((item["dt"] - desired).total_seconds()) / 3600.0
+        diff_h = abs((item["dt"] - target_dt).total_seconds()) / 3600.0
         if best is None or diff_h < best_diff:
             best = item
             best_diff = diff_h
@@ -565,10 +581,128 @@ def fields_for_valid_time(cache, valid_time):
     }
 
 
-def history_prev(history, hours_back):
-    if len(history) >= hours_back:
-        return history[-hours_back]
-    return None
+def build_snapshot(snapshot_dt, fields):
+    ice_pressure = fields["icePressure"]
+    ice_temp_c = fields["iceTempC"]
+    sea_pressure = fields["seaPressureMin"]
+    gradient = (ice_pressure - sea_pressure) if is_num(ice_pressure) and is_num(sea_pressure) else None
+    ice_wind = fields["iceWind"]
+    ice_pressure_anom_now = (ice_pressure - ICE_PRESSURE_NORMAL_HPA) if is_num(ice_pressure) else None
+    cold_support_now = max(0.0, -ice_temp_c) if is_num(ice_temp_c) else None
+    dT_coast_ice = (
+        max(0.0, fields["seaTempC"] - ice_temp_c)
+        if is_num(fields["seaTempC"]) and is_num(ice_temp_c)
+        else None
+    )
+
+    return {
+        "t": iso_z(snapshot_dt),
+        "icePressure": round(ice_pressure, 1) if is_num(ice_pressure) else None,
+        "iceTempC": round(ice_temp_c, 1) if is_num(ice_temp_c) else None,
+        "seaPressure": round(sea_pressure, 1) if is_num(sea_pressure) else None,
+        "gradient": round(gradient, 1) if is_num(gradient) else None,
+        "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
+        "ventilIndex": round(fields["ventilIndex"], 1) if is_num(fields["ventilIndex"]) else None,
+        "coastGate": round(fields["coastGate"], 1) if is_num(fields["coastGate"]) else None,
+        "icePressureAnomNow": round(ice_pressure_anom_now, 1) if is_num(ice_pressure_anom_now) else None,
+        "coldSupportNow": round(cold_support_now, 1) if is_num(cold_support_now) else None,
+        "dTCoastIceNow": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
+        "sector": fields["seaMinSector"],
+    }
+
+
+def sort_and_dedup_history(history):
+    cleaned = []
+    for item in history:
+        try:
+            dt = parse_iso(item["t"])
+            cleaned.append((dt, item))
+        except Exception:
+            continue
+
+    dedup = {}
+    for dt, item in cleaned:
+        dedup[item["t"]] = item
+
+    out = sorted(dedup.values(), key=lambda x: parse_iso(x["t"]))
+    return out[-HISTORY_KEEP:]
+
+
+def find_history_snapshot(history, target_dt, tolerance, required_keys=None):
+    required_keys = required_keys or []
+    best = None
+    best_diff = None
+
+    for item in history:
+        try:
+            dt = parse_iso(item["t"])
+        except Exception:
+            continue
+
+        if required_keys and not all(is_num(item.get(k)) for k in required_keys):
+            continue
+
+        diff = abs(dt - target_dt)
+        if diff <= tolerance and (best_diff is None or diff < best_diff):
+            best = item
+            best_diff = diff
+
+    return best
+
+
+def list_missing_backfill_targets(history, now_dt):
+    targets = []
+
+    checks = [
+        ("h6",  now_dt - timedelta(hours=6),  ["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]),
+        ("h12", now_dt - timedelta(hours=12), ["icePressure", "seaPressure", "ventilIndex", "coastGate"]),
+        ("h24", now_dt - timedelta(hours=24), ["iceTempC", "icePressure"]),
+        ("h72", now_dt - timedelta(hours=72), ["iceTempC", "icePressure"]),
+    ]
+
+    for label, target_dt, keys in checks:
+        snap = find_history_snapshot(history, target_dt, TREND_TOLERANCES[label], required_keys=keys)
+        if snap is None:
+            targets.append((label, target_dt))
+
+    return targets
+
+
+def backfill_missing_targets(history, instance_ids, targets):
+    if not targets:
+        return history, {}
+
+    cache = build_empty_cache()
+    fetch_errors = {}
+
+    # Kun ved hull: hent noen få nyere instances for å fylle manglende punkter
+    # 4 instances holder normalt for 12t, men vi lar 6 siste være sikkerhet for 24/72-proxyhull.
+    recent_ids = instance_ids[-6:]
+
+    for iid in reversed(recent_ids):
+        errs = append_instance_to_cache(cache, iid)
+        if errs:
+            fetch_errors[iid] = errs
+
+    axis = build_master_time_axis(cache)
+
+    added = 0
+    for label, target_dt in targets:
+        valid_time, dt_found, diff_h = find_valid_time(axis, target_dt, tolerance_hours=max(3.0, TREND_TOLERANCES[label].total_seconds() / 3600.0))
+        if valid_time is None:
+            continue
+
+        fields = fields_for_valid_time(cache, valid_time)
+        if not fields:
+            continue
+
+        snapshot = build_snapshot(dt_found, fields)
+        history.append(snapshot)
+        added += 1
+
+    history = sort_and_dedup_history(history)
+    print(f"Backfill added {added} snapshots")
+    return history, fetch_errors
 
 
 def classify_risk(score):
@@ -595,45 +729,63 @@ def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
     )
 
 
-def pick_needed_instances(instance_ids, now_dt):
-    ids = instance_ids[-3:]
-    selected = []
-    cache = build_empty_cache()
-    fetch_errors = {}
-
-    for iid in reversed(ids):
-        errs = append_instance_to_cache(cache, iid)
-        if errs:
-            fetch_errors[iid] = errs
-        selected.append(iid)
-
-        axis = build_master_time_axis(cache)
-        valid_now, _, _ = idx_at(axis, now_dt, off_hours=0)
-        valid_m6, _, _ = idx_at(axis, now_dt, off_hours=6)
-        valid_m12, _, _ = idx_at(axis, now_dt, off_hours=12)
-
-        if valid_now and valid_m6 and valid_m12:
-            break
-
-    selected.sort()
-    return cache, selected, fetch_errors
-
-
 def build_payload(now_dt):
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
-    history = load_json(HISTORY_FILE, [])
+    history = sort_and_dedup_history(load_json(HISTORY_FILE, []))
 
-    all_instances = list_instances()
-    cache, used_instances, fetch_errors = pick_needed_instances(all_instances, now_dt)
-    latest = all_instances[-1]
+    instance_ids = list_instances()
+    latest = instance_ids[-1]
 
-    master_axis = build_master_time_axis(cache)
+    # NORMAL DRIFT: bare nyeste instance
+    cache = build_empty_cache()
+    fetch_errors_now = append_instance_to_cache(cache, latest)
 
-    valid_now, dt_now, diff_now = idx_at(master_axis, now_dt, off_hours=0)
-    valid_m6, dt_m6, diff_m6 = idx_at(master_axis, now_dt, off_hours=6)
-    valid_m12, dt_m12, diff_m12 = idx_at(master_axis, now_dt, off_hours=12)
+    axis = build_master_time_axis(cache)
+    valid_now, dt_now, diff_now = find_valid_time(axis, now_dt, tolerance_hours=TIME_TOLERANCE_HOURS)
+    if valid_now is None:
+        raise RuntimeError("Fant ikke gyldig now-tid i nyeste DMI-instance.")
 
-    count = sum(1 for x in [valid_now, valid_m6, valid_m12] if x is not None)
+    now_fields = fields_for_valid_time(cache, valid_now)
+    if now_fields is None:
+        raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
+
+    current_snapshot = build_snapshot(dt_now, now_fields)
+    history.append(current_snapshot)
+    history = sort_and_dedup_history(history)
+
+    # BACKFILL bare ved hull i history
+    missing_targets = list_missing_backfill_targets(history, dt_now)
+    fetch_errors_backfill = {}
+    if missing_targets:
+        print("Missing history targets:", [(lbl, iso_z(tdt)) for lbl, tdt in missing_targets])
+        history, fetch_errors_backfill = backfill_missing_targets(history, instance_ids, missing_targets)
+
+    save_json(HISTORY_FILE, history)
+
+    fetch_errors = {}
+    if fetch_errors_now:
+        fetch_errors[latest] = fetch_errors_now
+    fetch_errors.update(fetch_errors_backfill)
+
+    # Finn historiske referanser fra history, ikke DMI
+    snap_6 = find_history_snapshot(
+        history, dt_now - timedelta(hours=6), TREND_TOLERANCES["h6"],
+        required_keys=["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]
+    )
+    snap_12 = find_history_snapshot(
+        history, dt_now - timedelta(hours=12), TREND_TOLERANCES["h12"],
+        required_keys=["icePressure", "seaPressure", "ventilIndex", "coastGate"]
+    )
+    snap_24 = find_history_snapshot(
+        history, dt_now - timedelta(hours=24), TREND_TOLERANCES["h24"],
+        required_keys=["iceTempC", "icePressure"]
+    )
+    snap_72 = find_history_snapshot(
+        history, dt_now - timedelta(hours=72), TREND_TOLERANCES["h72"],
+        required_keys=["iceTempC", "icePressure"]
+    )
+
+    count = sum(1 for x in [current_snapshot, snap_6, snap_12] if x is not None)
     if count == 3:
         trend_status = "ok"
     elif count == 2:
@@ -641,48 +793,32 @@ def build_payload(now_dt):
     else:
         trend_status = "insufficient_distinct_steps"
 
-    if valid_now is None:
-        raise RuntimeError("Fant ikke gyldig now-tid i DMI-serien.")
-
-    now_fields = fields_for_valid_time(cache, valid_now)
-    m6_fields = fields_for_valid_time(cache, valid_m6)
-    m12_fields = fields_for_valid_time(cache, valid_m12)
-
-    if now_fields is None:
-        raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
-
-    quality_flags = sorted(
-        set(
-            now_fields.get("qualityFlags", [])
-            + (m6_fields.get("qualityFlags", []) if m6_fields else [])
-            + (m12_fields.get("qualityFlags", []) if m12_fields else [])
-        )
-    )
-
+    quality_flags = sorted(set(now_fields.get("qualityFlags", [])))
     if fetch_errors:
         quality_flags.append("partial_point_fetch_errors")
 
-    ice_pressure = now_fields["icePressure"]
-    ice_temp_c = now_fields["iceTempC"]
-    ice_wind = now_fields["iceWind"]
+    ice_pressure = current_snapshot["icePressure"]
+    ice_temp_c = current_snapshot["iceTempC"]
+    sea_pressure = current_snapshot["seaPressure"]
+    gradient = current_snapshot["gradient"]
+    ice_wind = current_snapshot["iceWind"]
+    vent_now = current_snapshot["ventilIndex"]
+    coast_gate_now = current_snapshot["coastGate"]
+    sector = current_snapshot["sector"]
 
-    sea_pressure = now_fields["seaPressureMin"]
-    sector = now_fields["seaMinSector"]
+    d6 = (gradient - snap_6["gradient"]) if snap_6 and is_num(snap_6.get("gradient")) and is_num(gradient) else None
+    d12 = (gradient - snap_12["gradient"]) if snap_12 and is_num(snap_12.get("gradient")) and is_num(gradient) else None
 
-    gradient = ice_pressure - sea_pressure
+    sf6 = (snap_6["seaPressure"] - sea_pressure) if snap_6 and is_num(snap_6.get("seaPressure")) and is_num(sea_pressure) else None
+    sf12 = (snap_12["seaPressure"] - sea_pressure) if snap_12 and is_num(snap_12.get("seaPressure")) and is_num(sea_pressure) else None
 
-    gradient_m6 = (m6_fields["icePressure"] - m6_fields["seaPressureMin"]) if m6_fields else None
-    gradient_m12 = (m12_fields["icePressure"] - m12_fields["seaPressureMin"]) if m12_fields else None
+    ice_wind_trend_6h = (ice_wind - snap_6["iceWind"]) if snap_6 and is_num(snap_6.get("iceWind")) and is_num(ice_wind) else None
 
-    d6 = (gradient - gradient_m6) if is_num(gradient_m6) else None
-    d12 = (gradient - gradient_m12) if is_num(gradient_m12) else None
+    vent_d6 = (vent_now - snap_6["ventilIndex"]) if snap_6 and is_num(snap_6.get("ventilIndex")) and is_num(vent_now) else None
+    vent_d12 = (vent_now - snap_12["ventilIndex"]) if snap_12 and is_num(snap_12.get("ventilIndex")) and is_num(vent_now) else None
 
-    sf6 = (m6_fields["seaPressureMin"] - sea_pressure) if m6_fields else None
-    sf12 = (m12_fields["seaPressureMin"] - sea_pressure) if m12_fields else None
-
-    ice_wind_trend_6h = None
-    if m6_fields and is_num(ice_wind) and is_num(m6_fields["iceWind"]):
-        ice_wind_trend_6h = ice_wind - m6_fields["iceWind"]
+    coast_gate_d6 = (coast_gate_now - snap_6["coastGate"]) if snap_6 and is_num(snap_6.get("coastGate")) and is_num(coast_gate_now) else None
+    coast_gate_d12 = (coast_gate_now - snap_12["coastGate"]) if snap_12 and is_num(snap_12.get("coastGate")) and is_num(coast_gate_now) else None
 
     acc_uncertain = False
     if is_num(d6) and is_num(d12):
@@ -703,79 +839,40 @@ def build_payload(now_dt):
         acc_s = None
         acc_uncertain = True
 
-    vent_now = now_fields["ventilIndex"]
-    vent_m6 = m6_fields["ventilIndex"] if m6_fields else None
-    vent_m12 = m12_fields["ventilIndex"] if m12_fields else None
-
-    vent_d6 = (vent_now - vent_m6) if is_num(vent_now) and is_num(vent_m6) else None
-    vent_d12 = (vent_now - vent_m12) if is_num(vent_now) and is_num(vent_m12) else None
-
-    coast_gate_now = now_fields["coastGate"]
-    coast_gate_m6 = m6_fields["coastGate"] if m6_fields else None
-    coast_gate_m12 = m12_fields["coastGate"] if m12_fields else None
-
-    coast_gate_d6 = (coast_gate_now - coast_gate_m6) if is_num(coast_gate_now) and is_num(coast_gate_m6) else None
-    coast_gate_d12 = (coast_gate_now - coast_gate_m12) if is_num(coast_gate_now) and is_num(coast_gate_m12) else None
-
+    if trend_status == "partial":
+        quality_flags.append("partial_trend_window")
+    if acc_uncertain:
+        quality_flags.append("acceleration_estimated")
     if not is_num(vent_now):
         quality_flags.append("missing_ventil_index")
     if not is_num(coast_gate_now):
         quality_flags.append("missing_coast_gate")
-    if trend_status == "partial" and "partial_trend_window" not in quality_flags:
-        quality_flags.append("partial_trend_window")
-    if acc_uncertain and "acceleration_estimated" not in quality_flags:
-        quality_flags.append("acceleration_estimated")
 
     sea_motion_km6 = None
-    if m6_fields and is_num(m6_fields["seaMinLon"]) and is_num(m6_fields["seaMinLat"]):
-        dx = (now_fields["seaMinLon"] - m6_fields["seaMinLon"]) * math.cos(math.radians(now_fields["seaMinLat"])) * 111.0
-        dy = (now_fields["seaMinLat"] - m6_fields["seaMinLat"]) * 111.0
-        sea_motion_km6 = math.sqrt(dx * dx + dy * dy)
-        if sea_motion_km6 >= 180:
-            quality_flags.append("sea_min_motion_high")
+    if snap_6 and is_num(now_fields["seaMinLon"]) and is_num(now_fields["seaMinLat"]):
+        prev_lon = snap_6.get("seaMinLon")
+        prev_lat = snap_6.get("seaMinLat")
+        if is_num(prev_lon) and is_num(prev_lat):
+            dx = (now_fields["seaMinLon"] - prev_lon) * math.cos(math.radians(now_fields["seaMinLat"])) * 111.0
+            dy = (now_fields["seaMinLat"] - prev_lat) * 111.0
+            sea_motion_km6 = math.sqrt(dx * dx + dy * dy)
+            if sea_motion_km6 >= 180:
+                quality_flags.append("sea_min_motion_high")
 
-    ice_pressure_anom_now = ice_pressure - ICE_PRESSURE_NORMAL_HPA
-    sea_temp_now = now_fields["seaTempC"] if is_num(now_fields["seaTempC"]) else None
-    dT_coast_ice = max(0.0, sea_temp_now - ice_temp_c) if is_num(sea_temp_now) and is_num(ice_temp_c) else None
-    cold_support_now = max(0.0, -ice_temp_c) if is_num(ice_temp_c) else None
-    sea_low_depth = max(0.0, 1000.0 - sea_pressure)
-
-    snapshot = {
-        "t": now_dt.isoformat(),
-        "icePressure": round(ice_pressure, 1),
-        "iceTempC": round(ice_temp_c, 1) if is_num(ice_temp_c) else None,
-        "seaPressure": round(sea_pressure, 1),
-        "gradient": round(gradient, 1),
-        "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
-        "icePressureAnomNow": round(ice_pressure_anom_now, 1),
-        "coldSupportNow": round(cold_support_now, 1) if is_num(cold_support_now) else None,
-        "dTCoastIceNow": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
-        "sector": sector,
-    }
-
-    history.append(snapshot)
-    history = history[-96:]
-    save_json(HISTORY_FILE, history)
-
-    prev_24h = history_prev(history[:-1], 24)
-    prev_72h = history_prev(history[:-1], 72)
-
-    ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
-    ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
-
-    ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else None
-    ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else None
+    ice_pressure_anom_now = current_snapshot["icePressureAnomNow"]
+    cold_support_now = current_snapshot["coldSupportNow"]
+    dT_coast_ice = current_snapshot["dTCoastIceNow"]
+    sea_low_depth = max(0.0, 1000.0 - sea_pressure) if is_num(sea_pressure) else None
 
     ice_temp_trend_24h = None
     ice_temp_trend_72h = None
-
-    if is_num(ice_temp_c) and is_num(ice_temp_24h_ago):
-        ice_temp_trend_24h = ice_temp_c - ice_temp_24h_ago
+    if snap_24 and is_num(ice_temp_c) and is_num(snap_24.get("iceTempC")):
+        ice_temp_trend_24h = ice_temp_c - snap_24["iceTempC"]
     else:
         quality_flags.append("missing_ice_temp_trend_24h")
 
-    if is_num(ice_temp_c) and is_num(ice_temp_72h_ago):
-        ice_temp_trend_72h = ice_temp_c - ice_temp_72h_ago
+    if snap_72 and is_num(ice_temp_c) and is_num(snap_72.get("iceTempC")):
+        ice_temp_trend_72h = ice_temp_c - snap_72["iceTempC"]
     else:
         quality_flags.append("missing_ice_temp_trend_72h")
 
@@ -784,8 +881,16 @@ def build_payload(now_dt):
     if is_num(ice_temp_trend_72h) and ice_temp_trend_72h <= -5.0:
         quality_flags.append("cold_reservoir_building_72h")
 
-    ice_pressure_trend_24h = ice_pressure - ice_24h_ago
-    ice_pressure_trend_72h = ice_pressure - ice_72h_ago
+    ice_pressure_trend_24h = (
+        ice_pressure - snap_24["icePressure"]
+        if snap_24 and is_num(snap_24.get("icePressure")) and is_num(ice_pressure)
+        else None
+    )
+    ice_pressure_trend_72h = (
+        ice_pressure - snap_72["icePressure"]
+        if snap_72 and is_num(snap_72.get("icePressure")) and is_num(ice_pressure)
+        else None
+    )
 
     ice_anom_72 = [float(x.get("icePressureAnomNow", 0.0)) for x in history if is_num(x.get("icePressureAnomNow"))]
     cold_72 = [float(x.get("coldSupportNow", 0.0)) for x in history if is_num(x.get("coldSupportNow"))]
@@ -803,7 +908,7 @@ def build_payload(now_dt):
         + 0.05 * (norm(-ice_temp_trend_24h, 0, 8) if is_num(ice_temp_trend_24h) else 0.0)
     )
     reservoir = clamp(reservoir, 0, 100)
-    if ice_anom_72_mean <= -8:
+    if is_num(ice_anom_72_mean) and ice_anom_72_mean <= -8:
         reservoir = min(reservoir, 39)
 
     sector_score = {
@@ -920,9 +1025,9 @@ def build_payload(now_dt):
             "stale": False,
         },
         "inputs": {
-            "icePressure": round(ice_pressure, 1),
-            "seaPressure": round(sea_pressure, 1),
-            "gradient": round(gradient, 1),
+            "icePressure": round(ice_pressure, 1) if is_num(ice_pressure) else None,
+            "seaPressure": round(sea_pressure, 1) if is_num(sea_pressure) else None,
+            "gradient": round(gradient, 1) if is_num(gradient) else None,
             "d6": round(d6, 1) if is_num(d6) else None,
             "d12": round(d12, 1) if is_num(d12) else None,
             "sf6": round(sf6, 1) if is_num(sf6) else None,
@@ -950,7 +1055,7 @@ def build_payload(now_dt):
         "derived": {
             "watch": watch,
             "sector": sector,
-            "usedInstanceIds": used_instances,
+            "usedInstanceIds": [latest],
             "fetchErrors": fetch_errors,
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
             "seaMinLat": round(now_fields["seaMinLat"], 3) if is_num(now_fields["seaMinLat"]) else None,
@@ -972,13 +1077,13 @@ def build_payload(now_dt):
             "coastGate": round(coast_gate_now, 1) if is_num(coast_gate_now) else None,
             "coastGateD6": round(coast_gate_d6, 1) if is_num(coast_gate_d6) else None,
             "coastGateD12": round(coast_gate_d12, 1) if is_num(coast_gate_d12) else None,
-            "icePressureAnomNow": round(ice_pressure_anom_now, 1),
-            "icePressureAnom72hMean": round(ice_anom_72_mean, 1),
-            "icePressureTrend24h": round(ice_pressure_trend_24h, 1),
-            "icePressureTrend72h": round(ice_pressure_trend_72h, 1),
-            "coldSupport72h": round(cold_72_mean, 1),
+            "icePressureAnomNow": round(ice_pressure_anom_now, 1) if is_num(ice_pressure_anom_now) else None,
+            "icePressureAnom72hMean": round(ice_anom_72_mean, 1) if is_num(ice_anom_72_mean) else None,
+            "icePressureTrend24h": round(ice_pressure_trend_24h, 1) if is_num(ice_pressure_trend_24h) else None,
+            "icePressureTrend72h": round(ice_pressure_trend_72h, 1) if is_num(ice_pressure_trend_72h) else None,
+            "coldSupport72h": round(cold_72_mean, 1) if is_num(cold_72_mean) else None,
             "katabaticPotential": int(round(katabatic_potential)),
-            "seaLowDepth": round(sea_low_depth, 1),
+            "seaLowDepth": round(sea_low_depth, 1) if is_num(sea_low_depth) else None,
             "gradientBoost": round(gboost, 2),
             "accG": round(acc_g, 1) if is_num(acc_g) else None,
             "accS": round(acc_s, 1) if is_num(acc_s) else None,
@@ -987,8 +1092,10 @@ def build_payload(now_dt):
             "qualityFlags": sorted(set(quality_flags)),
             "selectedTimes": {
                 "now": {"validTime": valid_now, "diffHours": round(diff_now, 2)} if valid_now else None,
-                "m6": {"validTime": valid_m6, "diffHours": round(diff_m6, 2)} if valid_m6 else None,
-                "m12": {"validTime": valid_m12, "diffHours": round(diff_m12, 2)} if valid_m12 else None,
+                "h6_from_history": snap_6["t"] if snap_6 else None,
+                "h12_from_history": snap_12["t"] if snap_12 else None,
+                "h24_from_history": snap_24["t"] if snap_24 else None,
+                "h72_from_history": snap_72["t"] if snap_72 else None,
             },
             "usedIcePressurePoints": now_fields["usedIcePressurePoints"],
             "usedIceTempPoints": now_fields["usedIceTempPoints"],
@@ -1121,7 +1228,13 @@ def write_stale_payload(error):
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
             "qualityFlags": ["hard_failure"],
-            "selectedTimes": {"now": None, "m6": None, "m12": None},
+            "selectedTimes": {
+                "now": None,
+                "h6_from_history": None,
+                "h12_from_history": None,
+                "h24_from_history": None,
+                "h72_from_history": None,
+            },
             "usedIcePressurePoints": 0,
             "usedIceTempPoints": 0,
             "usedIceWindPoints": 0,
