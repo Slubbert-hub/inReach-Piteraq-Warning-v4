@@ -22,8 +22,8 @@ ICE_PRESSURE_NORMAL_HPA = 1013.25
 
 ICE_POINTS = [
     {"name": "source", "lon": -42.4, "lat": 69.0},
-    {"name": "mid",    "lon": -41.3, "lat": 68.6},
-    {"name": "mouth",  "lon": -40.3, "lat": 68.2},
+    {"name": "mid", "lon": -41.3, "lat": 68.6},
+    {"name": "mouth", "lon": -40.3, "lat": 68.2},
 ]
 
 SEA_POINTS = [
@@ -206,14 +206,14 @@ def build_empty_cache():
         merged["ice"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
-            "rows": []
+            "rows": [],
         }
 
     for p in SEA_POINTS:
         merged["sea"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
-            "rows": []
+            "rows": [],
         }
 
     return merged
@@ -228,14 +228,16 @@ def append_instance_to_cache(cache, iid):
         rows = cache["ice"][p["name"]]["rows"]
 
         for i, t in enumerate(times):
-            rows.append({
-                "instanceId": iid,
-                "validTime": t,
-                "dt": parse_iso(t),
-                "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-                "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
-            })
+            rows.append(
+                {
+                    "instanceId": iid,
+                    "validTime": t,
+                    "dt": parse_iso(t),
+                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                    "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
+                }
+            )
 
     for p in SEA_POINTS:
         data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
@@ -243,15 +245,16 @@ def append_instance_to_cache(cache, iid):
         rows = cache["sea"][p["name"]]["rows"]
 
         for i, t in enumerate(times):
-            rows.append({
-                "instanceId": iid,
-                "validTime": t,
-                "dt": parse_iso(t),
-                "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
-                "temperature-2m": safe_get(values.get("temperature-2m", []), i),
-            })
+            rows.append(
+                {
+                    "instanceId": iid,
+                    "validTime": t,
+                    "dt": parse_iso(t),
+                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                }
+            )
 
-    # dedupe per point
     for block_type in ["ice", "sea"]:
         for block in cache[block_type].values():
             dedup = {}
@@ -390,12 +393,14 @@ def fields_for_valid_time(cache, valid_time):
         meta = cache["sea"][name]
 
         if is_num(p):
-            sea_candidates.append({
-                "name": name,
-                "pressure": p / 100.0,
-                "lon": meta["lon"],
-                "lat": meta["lat"],
-            })
+            sea_candidates.append(
+                {
+                    "name": name,
+                    "pressure": p / 100.0,
+                    "lon": meta["lon"],
+                    "lat": meta["lat"],
+                }
+            )
 
         if is_num(t):
             sea_temps.append(kelvin_to_celsius(t))
@@ -474,12 +479,6 @@ def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
 
 
 def pick_needed_instances(instance_ids, now_dt):
-    """
-    Strømlinjeformet strategi:
-    - prøv nyeste instance
-    - hvis den ikke dekker -12t, legg til nest nyeste
-    - hvis fortsatt ikke nok, legg til tredje nyeste
-    """
     ids = instance_ids[-3:]
     selected = []
     cache = build_empty_cache()
@@ -533,11 +532,13 @@ def main():
     if now_fields is None:
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
 
-    quality_flags = sorted(set(
-        now_fields.get("qualityFlags", [])
-        + (m6_fields.get("qualityFlags", []) if m6_fields else [])
-        + (m12_fields.get("qualityFlags", []) if m12_fields else [])
-    ))
+    quality_flags = sorted(
+        set(
+            now_fields.get("qualityFlags", [])
+            + (m6_fields.get("qualityFlags", []) if m6_fields else [])
+            + (m12_fields.get("qualityFlags", []) if m12_fields else [])
+        )
+    )
 
     ice_pressure = now_fields["icePressure"]
     ice_temp_c = now_fields["iceTempC"]
@@ -660,7 +661,7 @@ def main():
         + 0.20 * norm(ice_pressure_anom_now, -12, 12)
         + 0.15 * norm(ice_pressure_trend_24h, -3, 8)
         + 0.10 * norm(ice_pressure_trend_72h, -5, 12)
-        + 0.05 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else None), 0, 8)
+        + 0.05 * (norm(-ice_temp_trend_24h, 0, 8) if is_num(ice_temp_trend_24h) else 0.0)
     )
     reservoir = clamp(reservoir, 0, 100)
     if ice_anom_72_mean <= -8:
@@ -687,8 +688,8 @@ def main():
         0.45 * norm(dT_72_mean, 3, 20)
         + 0.25 * norm(cold_72_mean, 5, 25)
         + 0.15 * norm(dT_coast_ice, 10, 35)
-        + 0.10 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else None), 0, 8)
-        + 0.05 * norm(-(ice_temp_trend_72h if is_num(ice_temp_trend_72h) else None), 0, 12)
+        + 0.10 * (norm(-ice_temp_trend_24h, 0, 8) if is_num(ice_temp_trend_24h) else 0.0)
+        + 0.05 * (norm(-ice_temp_trend_72h, 0, 12) if is_num(ice_temp_trend_72h) else 0.0)
     )
     thermal_component = clamp(thermal_component, 0, 100)
 
@@ -844,29 +845,77 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        fallback = load_json(
-            DATA_FILE,
-            {
-                "meta": {},
-                "inputs": {},
-                "scores": {},
-                "derived": {},
-                "output": {},
+        fallback = {
+            "meta": {
+                "source": "DMI HARMONIE",
+                "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                "location": LOCATION_NAME,
+                "model": COL,
+                "forecastInfo": f"Update failed: {type(e).__name__}",
+                "instanceId": "-",
             },
-        )
-        fallback["meta"] = {
-            "source": "DMI HARMONIE",
-            "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-            "location": LOCATION_NAME,
-            "model": COL,
-            "forecastInfo": f"Update failed: {type(e).__name__}",
-            "instanceId": "-",
+            "inputs": {
+                "icePressure": None,
+                "seaPressure": None,
+                "gradient": None,
+                "d6": None,
+                "d12": None,
+                "sf6": None,
+                "sf12": None,
+                "iceWind": None,
+                "iceWindTrend6h": None,
+                "coastIceDeltaT": None,
+                "iceTempTrend24h": None,
+                "iceTempTrend72h": None,
+            },
+            "scores": {
+                "reservoir": None,
+                "trigger": None,
+                "coupling": None,
+                "potential": None,
+                "risk": None,
+            },
+            "derived": {
+                "watch": False,
+                "sector": None,
+                "usedInstanceIds": [],
+                "seaMinLon": None,
+                "seaMinLat": None,
+                "seaCentroidPressure": None,
+                "seaCentroidLon": None,
+                "seaCentroidLat": None,
+                "seaCentroidSector": None,
+                "seaMinCentroidSpread": None,
+                "seaMinMotionKm6": None,
+                "icePressureAnomNow": None,
+                "icePressureAnom72hMean": None,
+                "icePressureTrend24h": None,
+                "icePressureTrend72h": None,
+                "coldSupport72h": None,
+                "katabaticPotential": None,
+                "seaLowDepth": None,
+                "gradientBoost": None,
+                "accG": None,
+                "accS": None,
+                "accUncertain": False,
+                "trendDataStatus": f"error: {type(e).__name__}",
+                "qualityFlags": ["hard_failure"],
+                "selectedTimes": {
+                    "now": None,
+                    "m6": None,
+                    "m12": None,
+                },
+                "usedIcePressurePoints": 0,
+                "usedIceTempPoints": 0,
+                "usedIceWindPoints": 0,
+                "usedSeaPressurePoints": 0,
+                "usedSeaTempPoints": 0,
+            },
+            "output": {
+                "level": "GRN",
+                "phase": "ERROR",
+                "message": f"{LOCATION_NAME} ERROR DMI {type(e).__name__}",
+            },
         }
-        fallback["derived"] = fallback.get("derived", {})
-        fallback["derived"]["trendDataStatus"] = f"error: {type(e).__name__}"
-        fallback["derived"]["qualityFlags"] = ["hard_failure"]
-        fallback["output"] = fallback.get("output", {})
-        fallback["output"]["phase"] = "ERROR"
-        fallback["output"]["message"] = f"{LOCATION_NAME} ERROR DMI {type(e).__name__}"
         save_json(DATA_FILE, fallback)
         print("Script failed:", repr(e))
