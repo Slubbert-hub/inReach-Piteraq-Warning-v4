@@ -1,10 +1,10 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-12 10:16 UTC",
+    "updatedAt": "2026-03-12 11:46 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Update failed: ReadTimeout",
+    "forecastInfo": "Update failed: TypeError",
     "instanceId": "-"
   },
   "inputs": {
@@ -62,7 +62,7 @@
     "accG": null,
     "accS": null,
     "accUncertain": false,
-    "trendDataStatus": "error: ReadTimeout",
+    "trendDataStatus": "error: TypeError",
     "qualityFlags": [
       "hard_failure"
     ],
@@ -80,6 +80,6 @@
   "output": {
     "level": "GRN",
     "phase": "ERROR",
-    "message": "TASIILAQ ERROR DMI ReadTimeout"
+    "message": "TASIILAQ ERROR DMI TypeError"
   }
 }
