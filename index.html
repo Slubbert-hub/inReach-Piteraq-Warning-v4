@@ -120,6 +120,10 @@
       color:#fca5a5;
       font-weight:700;
     }
+    .mutedwarn{
+      color:#fbbf24;
+      opacity:.95;
+    }
     .sectionspace{
       margin-top:18px;
     }
@@ -253,13 +257,13 @@
       <div class="card">
         <div class="label">Kuldetrend 24t</div>
         <div class="mid" id="iceTempTrend24hLine">-</div>
-        <div class="small">negativ verdi = kaldere is siste 24 timer</div>
+        <div class="small" id="iceTempTrend24hSub">negativ verdi = kaldere is siste 24 timer</div>
       </div>
 
       <div class="card">
         <div class="label">Kuldetrend 72t</div>
         <div class="mid" id="iceTempTrend72hLine">-</div>
-        <div class="small">negativ verdi = kaldere is siste 72 timer</div>
+        <div class="small" id="iceTempTrend72hSub">negativ verdi = kaldere is siste 72 timer</div>
       </div>
 
     </div>
@@ -326,6 +330,30 @@
       el.innerHTML = `<span class="statuswarn">Datakvalitet: ${flags.join(", ")}</span>`;
     }
 
+    function hasFlag(flags, name) {
+      return Array.isArray(flags) && flags.includes(name);
+    }
+
+    function renderColdTrend(value, lineId, subId, missingFlagName, baseText, flags) {
+      const line = document.getElementById(lineId);
+      const sub = document.getElementById(subId);
+
+      if (hasNumber(value)) {
+        line.innerText = fmtSigned(value, " °C");
+        sub.innerText = baseText;
+        return;
+      }
+
+      if (hasFlag(flags, missingFlagName)) {
+        line.innerText = "mangler data";
+        sub.innerHTML = `<span class="mutedwarn">usikker: historiske temperaturdata mangler</span>`;
+        return;
+      }
+
+      line.innerText = "mangler data";
+      sub.innerText = baseText;
+    }
+
     async function loadData(manual = false) {
       const btn = document.getElementById("refreshBtn");
       const status = document.getElementById("refreshStatus");
@@ -346,12 +374,13 @@
         const scores = d.scores || {};
         const derived = d.derived || {};
         const output = d.output || {};
+        const flags = derived.qualityFlags || [];
 
         document.getElementById("metaLine").innerText =
           `${meta.location || "-"} · oppdatert ${meta.updatedAt || "-"} · modell ${meta.model || "-"}`;
 
         renderTrendStatus(derived.trendDataStatus || "-");
-        renderQualityFlags(derived.qualityFlags || []);
+        renderQualityFlags(flags);
 
         document.getElementById("riskLine").innerText =
           `${output.level || "-"} · ${fmtInt(scores.risk, "/100")}`;
@@ -400,10 +429,23 @@
           : "cold72 mangler data";
         document.getElementById("katabaticSub").innerText = cold72Text;
 
-        document.getElementById("iceTempTrend24hLine").innerText =
-          fmtSigned(inputs.iceTempTrend24h, " °C");
-        document.getElementById("iceTempTrend72hLine").innerText =
-          fmtSigned(inputs.iceTempTrend72h, " °C");
+        renderColdTrend(
+          inputs.iceTempTrend24h,
+          "iceTempTrend24hLine",
+          "iceTempTrend24hSub",
+          "missing_ice_temp_trend_24h",
+          "negativ verdi = kaldere is siste 24 timer",
+          flags
+        );
+
+        renderColdTrend(
+          inputs.iceTempTrend72h,
+          "iceTempTrend72hLine",
+          "iceTempTrend72hSub",
+          "missing_ice_temp_trend_72h",
+          "negativ verdi = kaldere is siste 72 timer",
+          flags
+        );
 
         if (manual) {
           status.innerText = `Lastet: ${meta.updatedAt || "-"}`;
