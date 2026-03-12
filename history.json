@@ -200,5 +200,17 @@
     "coldSupportNow": 41.5,
     "dTCoastIceNow": 41.8,
     "sector": "E2"
+  },
+  {
+    "t": "2026-03-12T05:08:18.727550+00:00",
+    "icePressure": 991.8,
+    "iceTempC": -41.5,
+    "seaPressure": 975.9,
+    "gradient": 15.9,
+    "iceWind": 8.4,
+    "icePressureAnomNow": -21.5,
+    "coldSupportNow": 41.5,
+    "dTCoastIceNow": 41.9,
+    "sector": "E2"
   }
 ]
