@@ -1,6 +1,7 @@
 import json
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -13,10 +14,12 @@ LOCATION_NAME = "TASIILAQ"
 DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
 
-REQUEST_TIMEOUT = 28
-REQUEST_SLEEP = 0.5
+CONNECT_TIMEOUT = 8
+READ_TIMEOUT = 40
+REQUEST_SLEEP = 0.2
 REQUEST_RETRIES = 3
 TIME_TOLERANCE_HOURS = 2.75
+MAX_WORKERS = 5
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
@@ -26,7 +29,6 @@ ICE_POINTS = [
     {"name": "mouth", "lon": -40.3, "lat": 68.2},
 ]
 
-# Utvidet 10-punkts sjøfelt
 SEA_POINTS = [
     {"name": "W1", "lon": -34.9, "lat": 62.8},
     {"name": "W2", "lon": -33.7, "lat": 63.8},
@@ -40,10 +42,16 @@ SEA_POINTS = [
     {"name": "E2", "lon": -27.5, "lat": 66.4},
 ]
 
+COAST_POINTS = [
+    {"name": "K1", "lon": -38.8, "lat": 65.7},
+    {"name": "K2", "lon": -37.6, "lat": 66.5},
+]
+
 WEST_NAMES = ["W1", "W2", "W3"]
 MID_NAMES = ["C1", "C2", "M1", "M2", "M3"]
 EAST_NAMES = ["E1", "E2"]
-ALL_SEA_NAMES = WEST_NAMES + MID_NAMES + EAST_NAMES
+ALL_STRAIT_NAMES = WEST_NAMES + MID_NAMES + EAST_NAMES
+ALL_SEA_NAMES = ALL_STRAIT_NAMES + ["K1", "K2"]
 
 ICE_PARAMS = ["pressure-sealevel", "temperature-2m", "wind-speed-100m"]
 SEA_PARAMS = ["pressure-sealevel", "temperature-2m"]
@@ -70,6 +78,14 @@ def kelvin_to_celsius(k):
 
 def parse_iso(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
+def now_utc_str():
+    return now_utc().strftime("%Y-%m-%d %H:%M UTC")
 
 
 def is_num(x):
@@ -129,10 +145,10 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
     for attempt in range(retries):
         try:
             time.sleep(REQUEST_SLEEP)
-            r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            r = requests.get(url, params=params, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT))
 
             if r.status_code == 429:
-                wait = 5 + attempt * 6
+                wait = 4 + attempt * 6
                 print(f"DMI rate limit (429). Waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -142,19 +158,19 @@ def get_json(url, params=None, retries=REQUEST_RETRIES):
 
         except requests.exceptions.ReadTimeout as e:
             last_err = e
-            wait = 4 + attempt * 4
+            wait = 2 + attempt * 3
             print(f"DMI read timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except requests.exceptions.ConnectTimeout as e:
             last_err = e
-            wait = 4 + attempt * 4
+            wait = 2 + attempt * 3
             print(f"DMI connect timeout. Waiting {wait}s before retry...")
             time.sleep(wait)
 
         except Exception as e:
             last_err = e
-            wait = 2 + attempt * 2
+            wait = 1 + attempt * 2
             print(f"DMI request failed: {type(e).__name__}. Waiting {wait}s...")
             time.sleep(wait)
 
@@ -224,7 +240,7 @@ def build_empty_cache():
             "rows": [],
         }
 
-    for p in SEA_POINTS:
+    for p in SEA_POINTS + COAST_POINTS:
         merged["sea"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
@@ -234,11 +250,41 @@ def build_empty_cache():
     return merged
 
 
+def fetch_points_parallel(instance_id, points, parameter_names, max_workers=MAX_WORKERS):
+    results = {}
+    errors = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(fetch_position, instance_id, p["lon"], p["lat"], parameter_names): p["name"]
+            for p in points
+        }
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as e:
+                results[name] = None
+                errors[name] = f"{type(e).__name__}: {e}"
+
+    return results, errors
+
+
 def append_instance_to_cache(cache, iid):
-    print(f"Fetching DMI series for instance {iid}")
+    print(f"Fetching DMI series for instance {iid} with parallel point requests")
+
+    ice_results, ice_errors = fetch_points_parallel(iid, ICE_POINTS, ICE_PARAMS, max_workers=min(MAX_WORKERS, len(ICE_POINTS)))
+    sea_results, sea_errors = fetch_points_parallel(iid, SEA_POINTS + COAST_POINTS, SEA_PARAMS, max_workers=MAX_WORKERS)
+
+    all_errors = {}
+    all_errors.update({f"ice:{k}": v for k, v in ice_errors.items()})
+    all_errors.update({f"sea:{k}": v for k, v in sea_errors.items()})
 
     for p in ICE_POINTS:
-        data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+        data = ice_results.get(p["name"])
+        if not isinstance(data, dict):
+            continue
         times, values = parse_coverage_series(data, ICE_PARAMS)
         rows = cache["ice"][p["name"]]["rows"]
 
@@ -254,8 +300,10 @@ def append_instance_to_cache(cache, iid):
                 }
             )
 
-    for p in SEA_POINTS:
-        data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+    for p in SEA_POINTS + COAST_POINTS:
+        data = sea_results.get(p["name"])
+        if not isinstance(data, dict):
+            continue
         times, values = parse_coverage_series(data, SEA_PARAMS)
         rows = cache["sea"][p["name"]]["rows"]
 
@@ -276,6 +324,8 @@ def append_instance_to_cache(cache, iid):
             for row in block["rows"]:
                 dedup[row["validTime"]] = row
             block["rows"] = sorted(dedup.values(), key=lambda x: x["dt"])
+
+    return all_errors
 
 
 def build_master_time_axis(cache):
@@ -410,7 +460,7 @@ def fields_for_valid_time(cache, valid_time):
     sea_candidates = []
     sea_temps = []
 
-    for name in ALL_SEA_NAMES:
+    for name in ALL_STRAIT_NAMES:
         row = get_row_for_valid_time(cache["sea"], name, valid_time)
         if not row:
             continue
@@ -432,6 +482,11 @@ def fields_for_valid_time(cache, valid_time):
         if is_num(t):
             sea_temps.append(kelvin_to_celsius(t))
 
+    for name in ["K1", "K2"]:
+        row = get_row_for_valid_time(cache["sea"], name, valid_time)
+        if row and is_num(row.get("temperature-2m")):
+            sea_temps.append(kelvin_to_celsius(row.get("temperature-2m")))
+
     if not sea_candidates:
         return None
 
@@ -449,12 +504,13 @@ def fields_for_valid_time(cache, valid_time):
     sea_temp_c = avg(sea_temps)
     if sea_temp_c is None:
         quality_flags.append("missing_sea_temperature_all")
-    elif len(sea_temps) < len(ALL_SEA_NAMES):
+    elif len(sea_temps) < (len(ALL_STRAIT_NAMES) + 2):
         quality_flags.append("missing_sea_temperature_partial")
 
     west_mean = mean_pressure_for_names(cache, valid_time, WEST_NAMES)
     mid_mean = mean_pressure_for_names(cache, valid_time, MID_NAMES)
     east_mean = mean_pressure_for_names(cache, valid_time, EAST_NAMES)
+    coast_mean = mean_pressure_for_names(cache, valid_time, ["K1", "K2"])
 
     gate_mid = None
     gate_east = None
@@ -471,6 +527,12 @@ def fields_for_valid_time(cache, valid_time):
         quality_flags.append("missing_gate_mid")
     if not is_num(gate_east):
         quality_flags.append("missing_gate_east")
+
+    coast_gate = None
+    if is_num(ice_pressure) and is_num(coast_mean):
+        coast_gate = ice_pressure - coast_mean
+    else:
+        quality_flags.append("missing_coast_gate")
 
     return {
         "icePressure": ice_pressure,
@@ -489,9 +551,11 @@ def fields_for_valid_time(cache, valid_time):
         "westMeanPressure": west_mean,
         "midMeanPressure": mid_mean,
         "eastMeanPressure": east_mean,
+        "coastSeaPressure": coast_mean,
         "gateMid": gate_mid,
         "gateEast": gate_east,
         "ventilIndex": vent_index,
+        "coastGate": coast_gate,
         "qualityFlags": sorted(set(quality_flags)),
         "usedIcePressurePoints": sum(1 for v in pressure_vals if is_num(v)),
         "usedIceTempPoints": sum(1 for v in temp_vals if is_num(v)),
@@ -523,8 +587,8 @@ def gradient_boost(gradient_hpa):
 
 def potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h):
     return 100 * (
-        0.32 * (reservoir / 100.0)
-        + 0.24 * (coupling / 100.0)
+        0.30 * (reservoir / 100.0)
+        + 0.26 * (coupling / 100.0)
         + 0.24 * norm(gradient, 15, 40)
         + 0.10 * norm(d6 if is_num(d6) else 0.0, 0, 8)
         + 0.10 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else 0.0, 0, 6)
@@ -535,9 +599,12 @@ def pick_needed_instances(instance_ids, now_dt):
     ids = instance_ids[-3:]
     selected = []
     cache = build_empty_cache()
+    fetch_errors = {}
 
     for iid in reversed(ids):
-        append_instance_to_cache(cache, iid)
+        errs = append_instance_to_cache(cache, iid)
+        if errs:
+            fetch_errors[iid] = errs
         selected.append(iid)
 
         axis = build_master_time_axis(cache)
@@ -549,16 +616,15 @@ def pick_needed_instances(instance_ids, now_dt):
             break
 
     selected.sort()
-    return cache, selected
+    return cache, selected, fetch_errors
 
 
-def main():
-    now_dt = datetime.now(timezone.utc)
+def build_payload(now_dt):
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
     history = load_json(HISTORY_FILE, [])
 
     all_instances = list_instances()
-    cache, used_instances = pick_needed_instances(all_instances, now_dt)
+    cache, used_instances, fetch_errors = pick_needed_instances(all_instances, now_dt)
     latest = all_instances[-1]
 
     master_axis = build_master_time_axis(cache)
@@ -592,6 +658,9 @@ def main():
             + (m12_fields.get("qualityFlags", []) if m12_fields else [])
         )
     )
+
+    if fetch_errors:
+        quality_flags.append("partial_point_fetch_errors")
 
     ice_pressure = now_fields["icePressure"]
     ice_temp_c = now_fields["iceTempC"]
@@ -641,8 +710,17 @@ def main():
     vent_d6 = (vent_now - vent_m6) if is_num(vent_now) and is_num(vent_m6) else None
     vent_d12 = (vent_now - vent_m12) if is_num(vent_now) and is_num(vent_m12) else None
 
+    coast_gate_now = now_fields["coastGate"]
+    coast_gate_m6 = m6_fields["coastGate"] if m6_fields else None
+    coast_gate_m12 = m12_fields["coastGate"] if m12_fields else None
+
+    coast_gate_d6 = (coast_gate_now - coast_gate_m6) if is_num(coast_gate_now) and is_num(coast_gate_m6) else None
+    coast_gate_d12 = (coast_gate_now - coast_gate_m12) if is_num(coast_gate_now) and is_num(coast_gate_m12) else None
+
     if not is_num(vent_now):
         quality_flags.append("missing_ventil_index")
+    if not is_num(coast_gate_now):
+        quality_flags.append("missing_coast_gate")
     if trend_status == "partial" and "partial_trend_window" not in quality_flags:
         quality_flags.append("partial_trend_window")
     if acc_uncertain and "acceleration_estimated" not in quality_flags:
@@ -736,10 +814,11 @@ def main():
     }.get(sector, 25)
 
     coupling = 100 * (
-        0.46 * (sector_score / 100.0)
-        + 0.20 * norm(sea_low_depth, 5, 30)
-        + 0.12 * norm(ice_wind, 4, 20)
-        + 0.22 * norm(vent_now, 4, 16)
+        0.40 * (sector_score / 100.0)
+        + 0.16 * norm(sea_low_depth, 5, 30)
+        + 0.10 * norm(ice_wind, 4, 20)
+        + 0.18 * norm(vent_now, 4, 16)
+        + 0.16 * norm(coast_gate_now, 8, 30)
     )
     coupling = clamp(coupling, 0, 100)
 
@@ -757,18 +836,19 @@ def main():
 
     gboost = gradient_boost(gradient)
     trigger = 100 * (
-        0.26 * norm(gradient, 0, 65)
-        + 0.09 * gboost
-        + 0.16 * norm(sf6 if is_num(sf6) else None, 0, 10)
+        0.23 * norm(gradient, 0, 65)
+        + 0.08 * gboost
+        + 0.15 * norm(sf6 if is_num(sf6) else None, 0, 10)
         + 0.09 * norm(sf12 if is_num(sf12) else None, 0, 14)
-        + 0.11 * norm(d6 if is_num(d6) else None, 0, 10)
+        + 0.10 * norm(d6 if is_num(d6) else None, 0, 10)
         + 0.06 * norm(d12 if is_num(d12) else None, 0, 14)
         + 0.05 * norm(acc_g if is_num(acc_g) else None, 0, 6)
         + 0.03 * norm(acc_s if is_num(acc_s) else None, 0, 6)
         + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else None, 0, 6)
-        + 0.07 * norm(vent_now, 4, 16)
+        + 0.06 * norm(vent_now, 4, 16)
         + 0.03 * norm(vent_d6 if is_num(vent_d6) else None, 0, 6)
-        + 0.00 * norm(vent_d12 if is_num(vent_d12) else None, 0, 8)
+        + 0.04 * norm(coast_gate_now, 8, 30)
+        + 0.03 * norm(coast_gate_d6 if is_num(coast_gate_d6) else None, 0, 8)
     )
     trigger = clamp(trigger, 0, 100)
 
@@ -788,11 +868,12 @@ def main():
             or (is_num(acc_g) and acc_g >= 1)
             or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
             or (is_num(vent_now) and vent_now >= 8)
+            or (is_num(coast_gate_now) and coast_gate_now >= 16)
         )
     )
 
-    base = 0.58 * trigger + 0.30 * reservoir + 0.12 * potential
-    risk = base * (0.58 + 0.42 * (coupling / 100.0))
+    base = 0.58 * trigger + 0.28 * reservoir + 0.14 * potential
+    risk = base * (0.56 + 0.44 * (coupling / 100.0))
 
     if trigger < 20:
         risk = min(risk, 34)
@@ -809,6 +890,7 @@ def main():
     ct24_tag = compact_temp_trend_tag("CT24", ice_temp_trend_24h)
     ct72_tag = compact_temp_trend_tag("CT72", ice_temp_trend_72h)
     vg_tag = compact_gate_tag("VG", vent_now)
+    cg_tag = compact_gate_tag("CG", coast_gate_now)
 
     message = (
         f"{LOCATION_NAME} {level} {horizon}{trend_tag} "
@@ -821,7 +903,7 @@ def main():
         f"SF12{fmt_msg_num(sf12, signed=True)} "
         f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
         f"{ct24_tag} {ct72_tag} "
-        f"{vg_tag} "
+        f"{vg_tag} {cg_tag} "
         f"{ag_tag} {as_tag}"
     )
 
@@ -833,6 +915,9 @@ def main():
             "model": COL,
             "forecastInfo": "Latest available forecast step",
             "instanceId": latest,
+            "lastSuccessfulUpdate": now_str,
+            "lastAttemptFailed": None,
+            "stale": False,
         },
         "inputs": {
             "icePressure": round(ice_pressure, 1),
@@ -850,6 +935,10 @@ def main():
             "ventilIndex": round(vent_now, 1) if is_num(vent_now) else None,
             "ventilD6": round(vent_d6, 1) if is_num(vent_d6) else None,
             "ventilD12": round(vent_d12, 1) if is_num(vent_d12) else None,
+            "coastSeaPressure": round(now_fields["coastSeaPressure"], 1) if is_num(now_fields["coastSeaPressure"]) else None,
+            "coastGate": round(coast_gate_now, 1) if is_num(coast_gate_now) else None,
+            "coastGateD6": round(coast_gate_d6, 1) if is_num(coast_gate_d6) else None,
+            "coastGateD12": round(coast_gate_d12, 1) if is_num(coast_gate_d12) else None,
         },
         "scores": {
             "reservoir": int(round(reservoir)),
@@ -862,6 +951,7 @@ def main():
             "watch": watch,
             "sector": sector,
             "usedInstanceIds": used_instances,
+            "fetchErrors": fetch_errors,
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
             "seaMinLat": round(now_fields["seaMinLat"], 3) if is_num(now_fields["seaMinLat"]) else None,
             "seaCentroidPressure": round(now_fields["seaCentroidPressure"], 1) if is_num(now_fields["seaCentroidPressure"]) else None,
@@ -873,11 +963,15 @@ def main():
             "westMeanPressure": round(now_fields["westMeanPressure"], 1) if is_num(now_fields["westMeanPressure"]) else None,
             "midMeanPressure": round(now_fields["midMeanPressure"], 1) if is_num(now_fields["midMeanPressure"]) else None,
             "eastMeanPressure": round(now_fields["eastMeanPressure"], 1) if is_num(now_fields["eastMeanPressure"]) else None,
+            "coastSeaPressure": round(now_fields["coastSeaPressure"], 1) if is_num(now_fields["coastSeaPressure"]) else None,
             "gateMid": round(now_fields["gateMid"], 1) if is_num(now_fields["gateMid"]) else None,
             "gateEast": round(now_fields["gateEast"], 1) if is_num(now_fields["gateEast"]) else None,
             "ventilIndex": round(vent_now, 1) if is_num(vent_now) else None,
             "ventilD6": round(vent_d6, 1) if is_num(vent_d6) else None,
             "ventilD12": round(vent_d12, 1) if is_num(vent_d12) else None,
+            "coastGate": round(coast_gate_now, 1) if is_num(coast_gate_now) else None,
+            "coastGateD6": round(coast_gate_d6, 1) if is_num(coast_gate_d6) else None,
+            "coastGateD12": round(coast_gate_d12, 1) if is_num(coast_gate_d12) else None,
             "icePressureAnomNow": round(ice_pressure_anom_now, 1),
             "icePressureAnom72hMean": round(ice_anom_72_mean, 1),
             "icePressureTrend24h": round(ice_pressure_trend_24h, 1),
@@ -909,100 +1003,150 @@ def main():
         },
     }
 
-    save_json(DATA_FILE, payload)
-    print("Updated data.json/history.json")
-    print("used instances:", used_instances)
-    print("trendDataStatus:", trend_status)
-    if quality_flags:
-        print("qualityFlags:", sorted(set(quality_flags)))
+    return payload
+
+
+def write_stale_payload(error):
+    existing = load_json(DATA_FILE, None)
+    err_name = type(error).__name__
+    err_text = f"{err_name}"
+
+    if isinstance(existing, dict) and existing.get("inputs") and existing.get("scores") and existing.get("derived"):
+        meta = existing.get("meta", {})
+        derived = existing.get("derived", {})
+        quality_flags = derived.get("qualityFlags", [])
+        if not isinstance(quality_flags, list):
+            quality_flags = []
+
+        quality_flags = sorted(set(quality_flags + ["stale_due_to_failed_update"]))
+
+        meta["updatedAt"] = now_utc_str()
+        meta["source"] = "DMI HARMONIE"
+        meta["location"] = LOCATION_NAME
+        meta["model"] = COL
+        meta["forecastInfo"] = f"Latest update failed: {err_name}"
+        meta["lastAttemptFailed"] = err_text
+        meta["stale"] = True
+        meta.setdefault("lastSuccessfulUpdate", meta.get("updatedAt"))
+
+        derived["trendDataStatus"] = f"stale: {err_name}"
+        derived["qualityFlags"] = quality_flags
+
+        existing["meta"] = meta
+        existing["derived"] = derived
+
+        existing_output = existing.get("output", {})
+        existing_output["phase"] = f"STALE ({existing_output.get('phase', 'UNKNOWN')})"
+        existing["output"] = existing_output
+
+        save_json(DATA_FILE, existing)
+        print(f"Preserved last good dataset; marked as stale due to {err_name}")
+        return
+
+    fallback = {
+        "meta": {
+            "source": "DMI HARMONIE",
+            "updatedAt": now_utc_str(),
+            "location": LOCATION_NAME,
+            "model": COL,
+            "forecastInfo": f"Update failed: {err_name}",
+            "instanceId": "-",
+            "lastSuccessfulUpdate": None,
+            "lastAttemptFailed": err_text,
+            "stale": True,
+        },
+        "inputs": {
+            "icePressure": None,
+            "seaPressure": None,
+            "gradient": None,
+            "d6": None,
+            "d12": None,
+            "sf6": None,
+            "sf12": None,
+            "iceWind": None,
+            "iceWindTrend6h": None,
+            "coastIceDeltaT": None,
+            "iceTempTrend24h": None,
+            "iceTempTrend72h": None,
+            "ventilIndex": None,
+            "ventilD6": None,
+            "ventilD12": None,
+            "coastSeaPressure": None,
+            "coastGate": None,
+            "coastGateD6": None,
+            "coastGateD12": None,
+        },
+        "scores": {
+            "reservoir": None,
+            "trigger": None,
+            "coupling": None,
+            "potential": None,
+            "risk": None,
+        },
+        "derived": {
+            "watch": False,
+            "sector": None,
+            "usedInstanceIds": [],
+            "fetchErrors": {},
+            "seaMinLon": None,
+            "seaMinLat": None,
+            "seaCentroidPressure": None,
+            "seaCentroidLon": None,
+            "seaCentroidLat": None,
+            "seaCentroidSector": None,
+            "seaMinCentroidSpread": None,
+            "seaMinMotionKm6": None,
+            "westMeanPressure": None,
+            "midMeanPressure": None,
+            "eastMeanPressure": None,
+            "coastSeaPressure": None,
+            "gateMid": None,
+            "gateEast": None,
+            "ventilIndex": None,
+            "ventilD6": None,
+            "ventilD12": None,
+            "coastGate": None,
+            "coastGateD6": None,
+            "coastGateD12": None,
+            "icePressureAnomNow": None,
+            "icePressureAnom72hMean": None,
+            "icePressureTrend24h": None,
+            "icePressureTrend72h": None,
+            "coldSupport72h": None,
+            "katabaticPotential": None,
+            "seaLowDepth": None,
+            "gradientBoost": None,
+            "accG": None,
+            "accS": None,
+            "accUncertain": False,
+            "trendDataStatus": f"error: {err_name}",
+            "qualityFlags": ["hard_failure"],
+            "selectedTimes": {"now": None, "m6": None, "m12": None},
+            "usedIcePressurePoints": 0,
+            "usedIceTempPoints": 0,
+            "usedIceWindPoints": 0,
+            "usedSeaPressurePoints": 0,
+            "usedSeaTempPoints": 0,
+        },
+        "output": {
+            "level": "GRN",
+            "phase": "ERROR",
+            "message": f"{LOCATION_NAME} ERROR DMI {err_name}",
+        },
+    }
+    save_json(DATA_FILE, fallback)
+    print(f"No prior good dataset; wrote fallback due to {err_name}")
 
 
 if __name__ == "__main__":
     try:
-        main()
+        payload = build_payload(now_utc())
+        save_json(DATA_FILE, payload)
+        print("Updated data.json/history.json successfully")
+        print("trendDataStatus:", payload["derived"]["trendDataStatus"])
+        print("used instances:", payload["derived"]["usedInstanceIds"])
+        if payload["derived"].get("qualityFlags"):
+            print("qualityFlags:", payload["derived"]["qualityFlags"])
     except Exception as e:
-        fallback = {
-            "meta": {
-                "source": "DMI HARMONIE",
-                "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-                "location": LOCATION_NAME,
-                "model": COL,
-                "forecastInfo": f"Update failed: {type(e).__name__}",
-                "instanceId": "-",
-            },
-            "inputs": {
-                "icePressure": None,
-                "seaPressure": None,
-                "gradient": None,
-                "d6": None,
-                "d12": None,
-                "sf6": None,
-                "sf12": None,
-                "iceWind": None,
-                "iceWindTrend6h": None,
-                "coastIceDeltaT": None,
-                "iceTempTrend24h": None,
-                "iceTempTrend72h": None,
-                "ventilIndex": None,
-                "ventilD6": None,
-                "ventilD12": None,
-            },
-            "scores": {
-                "reservoir": None,
-                "trigger": None,
-                "coupling": None,
-                "potential": None,
-                "risk": None,
-            },
-            "derived": {
-                "watch": False,
-                "sector": None,
-                "usedInstanceIds": [],
-                "seaMinLon": None,
-                "seaMinLat": None,
-                "seaCentroidPressure": None,
-                "seaCentroidLon": None,
-                "seaCentroidLat": None,
-                "seaCentroidSector": None,
-                "seaMinCentroidSpread": None,
-                "seaMinMotionKm6": None,
-                "westMeanPressure": None,
-                "midMeanPressure": None,
-                "eastMeanPressure": None,
-                "gateMid": None,
-                "gateEast": None,
-                "ventilIndex": None,
-                "ventilD6": None,
-                "ventilD12": None,
-                "icePressureAnomNow": None,
-                "icePressureAnom72hMean": None,
-                "icePressureTrend24h": None,
-                "icePressureTrend72h": None,
-                "coldSupport72h": None,
-                "katabaticPotential": None,
-                "seaLowDepth": None,
-                "gradientBoost": None,
-                "accG": None,
-                "accS": None,
-                "accUncertain": False,
-                "trendDataStatus": f"error: {type(e).__name__}",
-                "qualityFlags": ["hard_failure"],
-                "selectedTimes": {
-                    "now": None,
-                    "m6": None,
-                    "m12": None,
-                },
-                "usedIcePressurePoints": 0,
-                "usedIceTempPoints": 0,
-                "usedIceWindPoints": 0,
-                "usedSeaPressurePoints": 0,
-                "usedSeaTempPoints": 0,
-            },
-            "output": {
-                "level": "GRN",
-                "phase": "ERROR",
-                "message": f"{LOCATION_NAME} ERROR DMI {type(e).__name__}",
-            },
-        }
-        save_json(DATA_FILE, fallback)
-        print("Script failed:", repr(e))
+        print("Update failed:", repr(e))
+        write_stale_payload(e)
