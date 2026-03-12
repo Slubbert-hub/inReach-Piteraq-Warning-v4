@@ -13,7 +13,7 @@
       padding:20px;
     }
     .wrap{
-      max-width:1200px;
+      max-width:1280px;
       margin:0 auto;
     }
     h1{
@@ -77,6 +77,7 @@
     .badge.YEL{ background:#eab308; }
     .badge.ORG{ background:#f59e0b; }
     .badge.RED{ background:#ef4444; color:#fff; }
+
     .messagebox{
       background:#0b1220;
       border-radius:18px;
@@ -108,6 +109,7 @@
     .btn-blue{
       background:#3b82f6;
     }
+
     .statuswarn{
       color:#fbbf24;
       font-weight:700;
@@ -120,12 +122,31 @@
       color:#fca5a5;
       font-weight:700;
     }
+    .statusstale{
+      color:#fdba74;
+      font-weight:800;
+    }
     .mutedwarn{
       color:#fbbf24;
       opacity:.95;
     }
     .sectionspace{
       margin-top:18px;
+    }
+
+    .infoBox{
+      margin-top:12px;
+      padding:14px 16px;
+      border-radius:16px;
+      background:#172132;
+    }
+    .infoBox.stale{
+      background:#312414;
+      border:1px solid rgba(251,191,36,.35);
+    }
+    .infoBox.error{
+      background:#341d22;
+      border:1px solid rgba(252,165,165,.28);
     }
   </style>
 </head>
@@ -137,6 +158,7 @@
       <div class="topmeta" id="metaLine">Laster data ...</div>
       <div class="small" id="trendStatusLine"></div>
       <div class="small" id="qualityFlagsLine"></div>
+      <div id="staleBox"></div>
       <div class="small">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
       <div class="btnrow">
         <button class="btn" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
@@ -173,13 +195,13 @@
       <div class="card">
         <div class="label">Trigger</div>
         <div class="mid" id="triggerLine">-</div>
-        <div class="small">gradient + trend + strait-fall + akselerasjon + ventil</div>
+        <div class="small">gradient + trend + strait-fall + akselerasjon + gate</div>
       </div>
 
       <div class="card">
         <div class="label">Coupling</div>
         <div class="mid" id="couplingLine">-</div>
-        <div class="small">sektor + havlav + vindstøtte + ventil</div>
+        <div class="small">sektor + havlav + vind + ventil + kystgate</div>
       </div>
 
       <div class="card">
@@ -239,7 +261,7 @@
       <div class="card">
         <div class="label">Ventilindeks</div>
         <div class="mid" id="ventilLine">-</div>
-        <div class="small">synoptisk åpning fra Grønland mot strait</div>
+        <div class="small">synoptisk åpning i Danmarkstredet</div>
       </div>
 
       <div class="card">
@@ -252,6 +274,30 @@
         <div class="label">Ventil d12</div>
         <div class="mid" id="ventilD12Line">-</div>
         <div class="small">endring i ventil siste 12 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Kystnært sjøtrykk</div>
+        <div class="mid" id="coastSeaPressureLine">-</div>
+        <div class="small">snitt av K1 og K2</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Kystgate</div>
+        <div class="mid" id="coastGateLine">-</div>
+        <div class="small">ice pressure minus kystnært sjøtrykk</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Kystgate d6</div>
+        <div class="mid" id="coastGateD6Line">-</div>
+        <div class="small">endring i kystgate siste 6 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Kystgate d12</div>
+        <div class="mid" id="coastGateD12Line">-</div>
+        <div class="small">endring i kystgate siste 12 timer</div>
       </div>
 
       <div class="card">
@@ -331,6 +377,11 @@
         return;
       }
 
+      if (String(trendStatus).startsWith("stale:")) {
+        el.innerHTML = `<span class="statusstale">Trendstatus: ${trendStatus}</span>`;
+        return;
+      }
+
       if (String(trendStatus).startsWith("error:")) {
         el.innerHTML = `<span class="statuserror">Trendstatus: ${trendStatus}</span>`;
         return;
@@ -346,6 +397,40 @@
         return;
       }
       el.innerHTML = `<span class="statuswarn">Datakvalitet: ${flags.join(", ")}</span>`;
+    }
+
+    function renderStaleInfo(meta) {
+      const box = document.getElementById("staleBox");
+      const stale = !!meta.stale;
+      const lastSuccessfulUpdate = meta.lastSuccessfulUpdate || null;
+      const lastAttemptFailed = meta.lastAttemptFailed || null;
+
+      if (!stale && !lastSuccessfulUpdate && !lastAttemptFailed) {
+        box.innerHTML = "";
+        return;
+      }
+
+      if (stale) {
+        box.innerHTML = `
+          <div class="infoBox stale">
+            <div class="statusstale">Viser sist vellykkede lagrede varsel.</div>
+            <div class="small">Siste oppdateringsforsøk feilet${lastAttemptFailed ? `: ${lastAttemptFailed}` : "."}</div>
+            <div class="small">${lastSuccessfulUpdate ? `Sist vellykket oppdatert: ${lastSuccessfulUpdate}` : "Sist vellykket oppdatering er ukjent."}</div>
+          </div>
+        `;
+        return;
+      }
+
+      if (lastSuccessfulUpdate) {
+        box.innerHTML = `
+          <div class="infoBox">
+            <div class="small">Sist vellykket oppdatert: ${lastSuccessfulUpdate}</div>
+          </div>
+        `;
+        return;
+      }
+
+      box.innerHTML = "";
     }
 
     function hasFlag(flags, name) {
@@ -399,6 +484,7 @@
 
         renderTrendStatus(derived.trendDataStatus || "-");
         renderQualityFlags(flags);
+        renderStaleInfo(meta);
 
         document.getElementById("riskLine").innerText =
           `${output.level || "-"} · ${fmtInt(scores.risk, "/100")}`;
@@ -439,6 +525,11 @@
         document.getElementById("ventilD6Line").innerText = fmtSigned(inputs.ventilD6, " hPa");
         document.getElementById("ventilD12Line").innerText = fmtSigned(inputs.ventilD12, " hPa");
 
+        document.getElementById("coastSeaPressureLine").innerText = fmt(inputs.coastSeaPressure, " hPa");
+        document.getElementById("coastGateLine").innerText = fmt(inputs.coastGate, " hPa");
+        document.getElementById("coastGateD6Line").innerText = fmtSigned(inputs.coastGateD6, " hPa");
+        document.getElementById("coastGateD12Line").innerText = fmtSigned(inputs.coastGateD12, " hPa");
+
         document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind, " m/s");
         document.getElementById("iceWindSub").innerText =
           `trend 6t ${fmtSigned(inputs.iceWindTrend6h, " m/s")}`;
@@ -477,6 +568,7 @@
         document.getElementById("trendStatusLine").innerHTML =
           `<span class="statuserror">${String(err)}</span>`;
         document.getElementById("qualityFlagsLine").innerHTML = "";
+        document.getElementById("staleBox").innerHTML = "";
         if (status) status.innerText = "Feil ved lasting av data.";
       } finally {
         if (manual && btn) {
@@ -489,4 +581,4 @@
     loadData(false);
   </script>
 </body>
-        </html>
+          </html>
