@@ -20,14 +20,12 @@ TIME_TOLERANCE_HOURS = 2.75
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
-# 3 punkter i operativ piteraq-korridor på isen
 ICE_POINTS = [
     {"name": "source", "lon": -42.4, "lat": 69.0},
     {"name": "mid",    "lon": -41.3, "lat": 68.6},
     {"name": "mouth",  "lon": -40.3, "lat": 68.2},
 ]
 
-# 7-punkts havfelt, forskjøvet 0.7° vest
 SEA_POINTS = [
     {"name": "W1", "lon": -34.9, "lat": 62.8},
     {"name": "W2", "lon": -33.7, "lat": 63.8},
@@ -201,66 +199,109 @@ def parse_coverage_series(data, parameter_names):
     return times, values
 
 
-def idx_at(times, target_dt, off_hours=0, tolerance_hours=TIME_TOLERANCE_HOURS):
+def collect_recent_instance_series(instance_ids):
     """
-    Finn nærmeste tilgjengelige tidspunkt, slik den andre appen gjorde.
+    Hent de siste 3 instance-idene og slå sammen seriene per punkt.
     """
-    if not times:
-        return None, None, None
-
-    desired = target_dt - timedelta(hours=off_hours)
-    parsed = [parse_iso(t) for t in times]
-
-    best_idx = None
-    best_diff = None
-
-    for i, dt in enumerate(parsed):
-        diff_h = abs((dt - desired).total_seconds()) / 3600.0
-        if best_diff is None or diff_h < best_diff:
-            best_idx = i
-            best_diff = diff_h
-
-    if best_idx is None or best_diff is None or best_diff > tolerance_hours:
-        return None, None, None
-
-    return best_idx, times[best_idx], best_diff
-
-
-def collect_latest_instance_series(instance_id):
-    cache = {"ice": {}, "sea": {}}
-
-    print(f"Fetching DMI series for instance {instance_id}")
+    merged = {"ice": {}, "sea": {}}
 
     for p in ICE_POINTS:
-        data = fetch_position(instance_id, p["lon"], p["lat"], ICE_PARAMS)
-        times, values = parse_coverage_series(data, ICE_PARAMS)
-        cache["ice"][p["name"]] = {
-            "times": times,
-            "values": values,
+        merged["ice"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
+            "rows": []
         }
 
     for p in SEA_POINTS:
-        data = fetch_position(instance_id, p["lon"], p["lat"], SEA_PARAMS)
-        times, values = parse_coverage_series(data, SEA_PARAMS)
-        cache["sea"][p["name"]] = {
-            "times": times,
-            "values": values,
+        merged["sea"][p["name"]] = {
             "lon": p["lon"],
             "lat": p["lat"],
+            "rows": []
         }
 
-    return cache
+    for iid in instance_ids[-3:]:
+        print(f"Fetching DMI series for instance {iid}")
+
+        for p in ICE_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], ICE_PARAMS)
+            times, values = parse_coverage_series(data, ICE_PARAMS)
+            rows = merged["ice"][p["name"]]["rows"]
+
+            for i, t in enumerate(times):
+                rows.append({
+                    "instanceId": iid,
+                    "validTime": t,
+                    "dt": parse_iso(t),
+                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                    "wind-speed-100m": safe_get(values.get("wind-speed-100m", []), i),
+                })
+
+        for p in SEA_POINTS:
+            data = fetch_position(iid, p["lon"], p["lat"], SEA_PARAMS)
+            times, values = parse_coverage_series(data, SEA_PARAMS)
+            rows = merged["sea"][p["name"]]["rows"]
+
+            for i, t in enumerate(times):
+                rows.append({
+                    "instanceId": iid,
+                    "validTime": t,
+                    "dt": parse_iso(t),
+                    "pressure-sealevel": safe_get(values.get("pressure-sealevel", []), i),
+                    "temperature-2m": safe_get(values.get("temperature-2m", []), i),
+                })
+
+    # dedupe per point on validTime, keep latest instance if duplicates
+    for block_type in ["ice", "sea"]:
+        for name, block in merged[block_type].items():
+            dedup = {}
+            for row in block["rows"]:
+                dedup[row["validTime"]] = row
+            block["rows"] = sorted(dedup.values(), key=lambda x: x["dt"])
+
+    return merged
 
 
-def extract_point_values(series_block, point_name, idx):
-    block = series_block[point_name]
-    values = block["values"]
-    out = {}
-    for k, arr in values.items():
-        out[k] = safe_get(arr, idx)
-    return out
+def build_master_time_axis(cache):
+    """
+    Bruk union av alle tider fra alle punkter.
+    """
+    dedup = {}
+    for block_type in ["ice", "sea"]:
+        for block in cache[block_type].values():
+            for row in block["rows"]:
+                dedup[row["validTime"]] = row["dt"]
+
+    axis = [{"validTime": t, "dt": dt} for t, dt in dedup.items()]
+    axis.sort(key=lambda x: x["dt"])
+    return axis
+
+
+def idx_at(master_axis, target_dt, off_hours=0, tolerance_hours=TIME_TOLERANCE_HOURS):
+    if not master_axis:
+        return None, None, None
+
+    desired = target_dt - timedelta(hours=off_hours)
+    best = None
+    best_diff = None
+
+    for item in master_axis:
+        diff_h = abs((item["dt"] - desired).total_seconds()) / 3600.0
+        if best is None or diff_h < best_diff:
+            best = item
+            best_diff = diff_h
+
+    if best is None or best_diff is None or best_diff > tolerance_hours:
+        return None, None, None
+
+    return best["validTime"], best["dt"], best_diff
+
+
+def get_row_for_valid_time(cache_block, point_name, valid_time):
+    for row in cache_block[point_name]["rows"]:
+        if row["validTime"] == valid_time:
+            return row
+    return None
 
 
 def weighted_mean(vals, weights):
@@ -297,8 +338,8 @@ def centroid_low(candidates):
     return cp, clon, clat, nearest_name
 
 
-def fields_for_idx(cache, idx):
-    if idx is None:
+def fields_for_valid_time(cache, valid_time):
+    if valid_time is None:
         return None
 
     pressure_vals = []
@@ -307,10 +348,16 @@ def fields_for_idx(cache, idx):
     quality_flags = []
 
     for name in ["source", "mid", "mouth"]:
-        vals = extract_point_values(cache["ice"], name, idx)
-        p = vals.get("pressure-sealevel")
-        t = vals.get("temperature-2m")
-        w = vals.get("wind-speed-100m")
+        row = get_row_for_valid_time(cache["ice"], name, valid_time)
+        if not row:
+            pressure_vals.append(None)
+            temp_vals.append(None)
+            wind_vals.append(None)
+            continue
+
+        p = row.get("pressure-sealevel")
+        t = row.get("temperature-2m")
+        w = row.get("wind-speed-100m")
 
         pressure_vals.append((p / 100.0) if is_num(p) else None)
         temp_vals.append(kelvin_to_celsius(t) if is_num(t) else None)
@@ -325,13 +372,13 @@ def fields_for_idx(cache, idx):
 
     if not is_num(ice_temp_c):
         quality_flags.append("missing_ice_temperature_all")
-        ice_temp_c = -20.0
+        ice_temp_c = None
     elif sum(1 for v in temp_vals if is_num(v)) < 3:
         quality_flags.append("missing_ice_temperature_partial")
 
     if not is_num(ice_wind):
         quality_flags.append("missing_ice_wind_all")
-        ice_wind = 0.0
+        ice_wind = None
     elif sum(1 for v in wind_vals if is_num(v)) < 3:
         quality_flags.append("missing_ice_wind_partial")
 
@@ -339,9 +386,12 @@ def fields_for_idx(cache, idx):
     sea_temps = []
 
     for name in ["W1", "W2", "W3", "C1", "C2", "E1", "E2"]:
-        vals = extract_point_values(cache["sea"], name, idx)
-        p = vals.get("pressure-sealevel")
-        t = vals.get("temperature-2m")
+        row = get_row_for_valid_time(cache["sea"], name, valid_time)
+        if not row:
+            continue
+
+        p = row.get("pressure-sealevel")
+        t = row.get("temperature-2m")
         meta = cache["sea"][name]
 
         if is_num(p):
@@ -369,13 +419,11 @@ def fields_for_idx(cache, idx):
         elif spread >= 2.0:
             quality_flags.append("sea_field_spread_moderate")
 
-    if sea_temps:
-        sea_temp_c = avg(sea_temps)
-        if len(sea_temps) < 7:
-            quality_flags.append("missing_sea_temperature_partial")
-    else:
+    sea_temp_c = avg(sea_temps)
+    if sea_temp_c is None:
         quality_flags.append("missing_sea_temperature_all")
-        sea_temp_c = 0.0
+    elif len(sea_temps) < 7:
+        quality_flags.append("missing_sea_temperature_partial")
 
     return {
         "icePressure": ice_pressure,
@@ -435,17 +483,17 @@ def main():
     now_str = now_dt.strftime("%Y-%m-%d %H:%M UTC")
     history = load_json(HISTORY_FILE, [])
 
-    latest = list_instances()[-1]
-    cache = collect_latest_instance_series(latest)
+    latest_instances = list_instances()
+    cache = collect_recent_instance_series(latest_instances)
+    latest = latest_instances[-1]
 
-    # Bruk DMI-serien ved source-punktet som felles tidsakse
-    base_times = cache["ice"]["source"]["times"]
+    master_axis = build_master_time_axis(cache)
 
-    idx_now, time_now, diff_now = idx_at(base_times, now_dt, off_hours=0)
-    idx_m6, time_m6, diff_m6 = idx_at(base_times, now_dt, off_hours=6)
-    idx_m12, time_m12, diff_m12 = idx_at(base_times, now_dt, off_hours=12)
+    valid_now, dt_now, diff_now = idx_at(master_axis, now_dt, off_hours=0)
+    valid_m6, dt_m6, diff_m6 = idx_at(master_axis, now_dt, off_hours=6)
+    valid_m12, dt_m12, diff_m12 = idx_at(master_axis, now_dt, off_hours=12)
 
-    count = sum(1 for x in [idx_now, idx_m6, idx_m12] if x is not None)
+    count = sum(1 for x in [valid_now, valid_m6, valid_m12] if x is not None)
     if count == 3:
         trend_status = "ok"
     elif count == 2:
@@ -453,12 +501,12 @@ def main():
     else:
         trend_status = "insufficient_distinct_steps"
 
-    if idx_now is None:
+    if valid_now is None:
         raise RuntimeError("Fant ikke gyldig now-tid i DMI-serien.")
 
-    now_fields = fields_for_idx(cache, idx_now)
-    m6_fields = fields_for_idx(cache, idx_m6)
-    m12_fields = fields_for_idx(cache, idx_m12)
+    now_fields = fields_for_valid_time(cache, valid_now)
+    m6_fields = fields_for_valid_time(cache, valid_m6)
+    m12_fields = fields_for_valid_time(cache, valid_m12)
 
     if now_fields is None:
         raise RuntimeError("Kunne ikke lese now-felter fra DMI-data.")
@@ -487,7 +535,9 @@ def main():
     sf6 = (m6_fields["seaPressureMin"] - sea_pressure) if m6_fields else None
     sf12 = (m12_fields["seaPressureMin"] - sea_pressure) if m12_fields else None
 
-    ice_wind_trend_6h = (ice_wind - m6_fields["iceWind"]) if m6_fields and is_num(m6_fields["iceWind"]) else None
+    ice_wind_trend_6h = None
+    if m6_fields and is_num(ice_wind) and is_num(m6_fields["iceWind"]):
+        ice_wind_trend_6h = ice_wind - m6_fields["iceWind"]
 
     acc_uncertain = False
     if is_num(d6) and is_num(d12):
@@ -523,8 +573,8 @@ def main():
             quality_flags.append("sea_min_motion_high")
 
     ice_pressure_anom_now = ice_pressure - ICE_PRESSURE_NORMAL_HPA
-    dT_coast_ice = max(0.0, now_fields["seaTempC"] - ice_temp_c)
-    cold_support_now = max(0.0, -ice_temp_c)
+    dT_coast_ice = max(0.0, (now_fields["seaTempC"] if is_num(now_fields["seaTempC"]) else 0.0) - (ice_temp_c if is_num(ice_temp_c) else 0.0))
+    cold_support_now = max(0.0, -(ice_temp_c if is_num(ice_temp_c) else 0.0))
     sea_low_depth = max(0.0, 1000.0 - sea_pressure)
 
     snapshot = {
@@ -541,7 +591,7 @@ def main():
     }
 
     history.append(snapshot)
-    history = history[-96:]  # hold litt lenger buffer enn 72
+    history = history[-96:]
     save_json(HISTORY_FILE, history)
 
     prev_24h = history_prev(history[:-1], 24)
@@ -550,11 +600,23 @@ def main():
     ice_24h_ago = float(prev_24h["icePressure"]) if prev_24h and is_num(prev_24h.get("icePressure")) else ice_pressure
     ice_72h_ago = float(prev_72h["icePressure"]) if prev_72h and is_num(prev_72h.get("icePressure")) else ice_pressure
 
-    ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else ice_temp_c
-    ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else ice_temp_c
+    # Kvalitetssikret kuldetrend:
+    # bare beregn hvis historiske temp-punkter faktisk finnes
+    ice_temp_24h_ago = float(prev_24h["iceTempC"]) if prev_24h and is_num(prev_24h.get("iceTempC")) else None
+    ice_temp_72h_ago = float(prev_72h["iceTempC"]) if prev_72h and is_num(prev_72h.get("iceTempC")) else None
 
-    ice_temp_trend_24h = (ice_temp_c - ice_temp_24h_ago) if is_num(ice_temp_c) and is_num(ice_temp_24h_ago) else None
-    ice_temp_trend_72h = (ice_temp_c - ice_temp_72h_ago) if is_num(ice_temp_c) and is_num(ice_temp_72h_ago) else None
+    ice_temp_trend_24h = None
+    ice_temp_trend_72h = None
+
+    if is_num(ice_temp_c) and is_num(ice_temp_24h_ago):
+        ice_temp_trend_24h = ice_temp_c - ice_temp_24h_ago
+    else:
+        quality_flags.append("missing_ice_temp_trend_24h")
+
+    if is_num(ice_temp_c) and is_num(ice_temp_72h_ago):
+        ice_temp_trend_72h = ice_temp_c - ice_temp_72h_ago
+    else:
+        quality_flags.append("missing_ice_temp_trend_72h")
 
     if is_num(ice_temp_trend_24h) and ice_temp_trend_24h <= -3.0:
         quality_flags.append("cold_reservoir_building_24h")
@@ -577,7 +639,7 @@ def main():
         + 0.20 * norm(ice_pressure_anom_now, -12, 12)
         + 0.15 * norm(ice_pressure_trend_24h, -3, 8)
         + 0.10 * norm(ice_pressure_trend_72h, -5, 12)
-        + 0.05 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else 0.0), 0, 8)
+        + 0.05 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else None), 0, 8)
     )
     reservoir = clamp(reservoir, 0, 100)
     if ice_anom_72_mean <= -8:
@@ -604,8 +666,8 @@ def main():
         0.45 * norm(dT_72_mean, 3, 20)
         + 0.25 * norm(cold_72_mean, 5, 25)
         + 0.15 * norm(dT_coast_ice, 10, 35)
-        + 0.10 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else 0.0), 0, 8)
-        + 0.05 * norm(-(ice_temp_trend_72h if is_num(ice_temp_trend_72h) else 0.0), 0, 12)
+        + 0.10 * norm(-(ice_temp_trend_24h if is_num(ice_temp_trend_24h) else None), 0, 8)
+        + 0.05 * norm(-(ice_temp_trend_72h if is_num(ice_temp_trend_72h) else None), 0, 12)
     )
     thermal_component = clamp(thermal_component, 0, 100)
 
@@ -616,13 +678,13 @@ def main():
     trigger = 100 * (
         0.30 * norm(gradient, 0, 65)
         + 0.10 * gboost
-        + 0.18 * norm(sf6 if is_num(sf6) else 0.0, 0, 10)
-        + 0.10 * norm(sf12 if is_num(sf12) else 0.0, 0, 14)
-        + 0.12 * norm(d6 if is_num(d6) else 0.0, 0, 10)
-        + 0.06 * norm(d12 if is_num(d12) else 0.0, 0, 14)
-        + 0.06 * norm(acc_g if is_num(acc_g) else 0.0, 0, 6)
-        + 0.03 * norm(acc_s if is_num(acc_s) else 0.0, 0, 6)
-        + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else 0.0, 0, 6)
+        + 0.18 * norm(sf6 if is_num(sf6) else None, 0, 10)
+        + 0.10 * norm(sf12 if is_num(sf12) else None, 0, 14)
+        + 0.12 * norm(d6 if is_num(d6) else None, 0, 10)
+        + 0.06 * norm(d12 if is_num(d12) else None, 0, 14)
+        + 0.06 * norm(acc_g if is_num(acc_g) else None, 0, 6)
+        + 0.03 * norm(acc_s if is_num(acc_s) else None, 0, 6)
+        + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else None, 0, 6)
     )
     trigger = clamp(trigger, 0, 100)
 
@@ -731,9 +793,9 @@ def main():
             "trendDataStatus": trend_status,
             "qualityFlags": sorted(set(quality_flags)),
             "selectedTimes": {
-                "now": {"validTime": time_now, "diffHours": round(diff_now, 2)} if time_now else None,
-                "m6": {"validTime": time_m6, "diffHours": round(diff_m6, 2)} if time_m6 else None,
-                "m12": {"validTime": time_m12, "diffHours": round(diff_m12, 2)} if time_m12 else None,
+                "now": {"validTime": valid_now, "diffHours": round(diff_now, 2)} if valid_now else None,
+                "m6": {"validTime": valid_m6, "diffHours": round(diff_m6, 2)} if valid_m6 else None,
+                "m12": {"validTime": valid_m12, "diffHours": round(diff_m12, 2)} if valid_m12 else None,
             },
             "usedIcePressurePoints": now_fields["usedIcePressurePoints"],
             "usedIceTempPoints": now_fields["usedIceTempPoints"],
