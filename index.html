@@ -126,6 +126,10 @@
       color:#fdba74;
       font-weight:800;
     }
+    .statusinfo{
+      color:#93c5fd;
+      font-weight:700;
+    }
     .mutedwarn{
       color:#fbbf24;
       opacity:.95;
@@ -173,6 +177,7 @@
         </div>
         <div class="small" id="phaseLine"></div>
         <div class="small" id="watchLine"></div>
+        <div class="small" id="ladningLine"></div>
       </div>
 
       <div class="card">
@@ -198,13 +203,19 @@
       <div class="card">
         <div class="label">Coupling</div>
         <div class="mid" id="couplingLine">-</div>
-        <div class="small">sektor + havlav + vind + ventil + kystgate</div>
+        <div class="small">syklonsone + sektor + havlav + ventil + kystgate</div>
       </div>
 
       <div class="card">
         <div class="label">Potential</div>
         <div class="mid" id="potentialLine">-</div>
         <div class="small">nærhet til kritisk piteraq-oppsett</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Cyclone trigger zone</div>
+        <div class="mid" id="cycloneScoreLine">-</div>
+        <div class="small" id="cycloneZoneLine">-</div>
       </div>
 
       <div class="card">
@@ -247,6 +258,12 @@
         <div class="label">SF12</div>
         <div class="mid" id="sf12Line">-</div>
         <div class="small">trykkfall i strait siste 12 timer</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Pressure-fall acc</div>
+        <div class="mid" id="pressureFallAccLine">-</div>
+        <div class="small">akselerasjon i trykkfall</div>
       </div>
 
       <div class="card">
@@ -506,6 +523,8 @@
         setRiskBadge(output.level || "");
         document.getElementById("phaseLine").innerText = output.phase || "-";
         document.getElementById("watchLine").innerText = derived.watch ? "Watch ON" : "Watch OFF";
+        document.getElementById("ladningLine").innerHTML =
+          derived.isLadning ? `<span class="statusinfo">Reservoir ladet, men syklon ikke fullt koblet</span>` : "";
 
         document.getElementById("messageBox").innerText = output.message || "-";
 
@@ -513,6 +532,10 @@
         document.getElementById("triggerLine").innerText = fmtInt(scores.trigger, "/100");
         document.getElementById("couplingLine").innerText = fmtInt(scores.coupling, "/100");
         document.getElementById("potentialLine").innerText = fmtInt(scores.potential, "/100");
+
+        document.getElementById("cycloneScoreLine").innerText = fmtInt(derived.cycloneScore, "/100");
+        document.getElementById("cycloneZoneLine").innerText =
+          derived.cycloneInTriggerZone ? "Syklon i trigger-sone" : "Syklon utenfor trigger-sone";
 
         document.getElementById("icePressureLine").innerText = fmt(inputs.icePressure, " hPa");
         document.getElementById("icePressureSub").innerText =
@@ -529,6 +552,7 @@
         document.getElementById("d12Line").innerText = fmtSigned(inputs.d12, " hPa");
         document.getElementById("sf6Line").innerText = fmtSigned(inputs.sf6, " hPa");
         document.getElementById("sf12Line").innerText = fmtSigned(inputs.sf12, " hPa");
+        document.getElementById("pressureFallAccLine").innerText = fmtSigned(inputs.pressureFallAcceleration, " hPa");
 
         const accSuffix = derived.accUncertain ? "?" : "";
         const accG = hasNumber(derived.accG) ? Number(derived.accG).toFixed(1) : "mangler data";
