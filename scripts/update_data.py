@@ -25,6 +25,13 @@ HISTORY_KEEP = 144  # 6 døgn ved timekjøring
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
+CYCLONE_TRIGGER_ZONE = {
+    "lat_min": 60.0,
+    "lat_max": 66.0,
+    "lon_min": -35.0,
+    "lon_max": -20.0,
+}
+
 ICE_POINTS = [
     {"name": "source", "lon": -42.4, "lat": 69.0},
     {"name": "mid", "lon": -41.3, "lat": 68.6},
@@ -72,7 +79,9 @@ def clamp(x, lo, hi):
 def norm(x, lo, hi):
     if x is None or hi == lo:
         return 0.0
-    return clamp((x - lo) / (hi - lo), 0.0, 1.0)
+    if hi > lo:
+        return clamp((x - lo) / (hi - lo), 0.0, 1.0)
+    return clamp((lo - x) / (lo - hi), 0.0, 1.0)
 
 
 def avg(values):
@@ -428,6 +437,27 @@ def mean_pressure_for_names(cache, valid_time, names):
     return avg(vals)
 
 
+def cyclone_position_score(centroid_lon, centroid_lat, centroid_pressure):
+    if not (is_num(centroid_lon) and is_num(centroid_lat)):
+        return 0.0, False
+
+    z = CYCLONE_TRIGGER_ZONE
+    in_zone = (
+        z["lat_min"] <= centroid_lat <= z["lat_max"]
+        and z["lon_min"] <= centroid_lon <= z["lon_max"]
+    )
+
+    if not in_zone:
+        return 0.0, False
+
+    depth_score = norm(centroid_pressure, 1010.0, 990.0) if is_num(centroid_pressure) else 0.5
+    return clamp(100.0 * depth_score, 0.0, 100.0), True
+
+
+def is_ladning(reservoir, cyclone_in_zone, coupling):
+    return reservoir >= 40 and (not cyclone_in_zone) and coupling < 45
+
+
 def fields_for_valid_time(cache, valid_time):
     if valid_time is None:
         return None
@@ -605,6 +635,9 @@ def build_snapshot(snapshot_dt, fields):
         "coastGate": round(fields["coastGate"], 1) if is_num(fields["coastGate"]) else None,
         "seaMinLon": round(fields["seaMinLon"], 3) if is_num(fields["seaMinLon"]) else None,
         "seaMinLat": round(fields["seaMinLat"], 3) if is_num(fields["seaMinLat"]) else None,
+        "seaCentroidPressure": round(fields["seaCentroidPressure"], 1) if is_num(fields["seaCentroidPressure"]) else None,
+        "seaCentroidLon": round(fields["seaCentroidLon"], 3) if is_num(fields["seaCentroidLon"]) else None,
+        "seaCentroidLat": round(fields["seaCentroidLat"], 3) if is_num(fields["seaCentroidLat"]) else None,
         "icePressureAnomNow": round(ice_pressure_anom_now, 1) if is_num(ice_pressure_anom_now) else None,
         "coldSupportNow": round(cold_support_now, 1) if is_num(cold_support_now) else None,
         "dTCoastIceNow": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
@@ -675,11 +708,6 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
     fetch_errors = {}
     remaining = set(missing_labels)
 
-    target_times = {
-        "h6": None,
-        "h12": None,
-    }
-
     for iid in reversed(older_instance_ids):
         errs = append_instance_to_cache(cache, iid)
         if errs:
@@ -690,10 +718,10 @@ def backfill_until_targets_found(history, older_instance_ids, missing_labels):
 
         for label in list(remaining):
             hours_back = 6 if label == "h6" else 12
-            # referanse mot nåtid i denne kjøringen finnes i history som siste snapshot
             now_snap = history[-1] if history else None
             if not now_snap:
                 continue
+
             now_dt_hist = parse_iso(now_snap["t"])
             target_dt = now_dt_hist - timedelta(hours=hours_back)
 
@@ -854,6 +882,12 @@ def build_payload(now_dt):
         acc_s = None
         acc_uncertain = True
 
+    pressure_fall_acceleration = None
+    if is_num(sf6) and is_num(sf12):
+        pressure_fall_acceleration = sf6 - (sf12 - sf6)
+        if pressure_fall_acceleration > 2.0:
+            quality_flags.append("pressure_fall_accelerating")
+
     if trend_status == "partial":
         quality_flags.append("partial_trend_window")
     if acc_uncertain:
@@ -933,12 +967,21 @@ def build_payload(now_dt):
         "E1": 50, "E2": 35,
     }.get(sector, 25)
 
+    cyclone_score, cyclone_in_zone = cyclone_position_score(
+        current_snapshot.get("seaCentroidLon"),
+        current_snapshot.get("seaCentroidLat"),
+        current_snapshot.get("seaCentroidPressure"),
+    )
+    if not cyclone_in_zone:
+        quality_flags.append("cyclone_outside_trigger_zone")
+
     coupling = 100 * (
-        0.40 * (sector_score / 100.0)
+        0.35 * (cyclone_score / 100.0)
+        + 0.10 * (sector_score / 100.0)
         + 0.16 * norm(sea_low_depth, 5, 30)
         + 0.10 * norm(ice_wind, 4, 20)
         + 0.18 * norm(vent_now, 4, 16)
-        + 0.16 * norm(coast_gate_now, 8, 30)
+        + 0.11 * norm(coast_gate_now, 8, 30)
     )
     coupling = clamp(coupling, 0, 100)
 
@@ -955,20 +998,23 @@ def build_payload(now_dt):
     katabatic_potential = clamp(thermal_component * reservoir_factor, 0, 100)
 
     gboost = gradient_boost(gradient)
+    pf_acc_score = norm(pressure_fall_acceleration, 0, 5) if is_num(pressure_fall_acceleration) else 0.0
+
     trigger = 100 * (
         0.23 * norm(gradient, 0, 65)
         + 0.08 * gboost
-        + 0.15 * norm(sf6 if is_num(sf6) else None, 0, 10)
-        + 0.09 * norm(sf12 if is_num(sf12) else None, 0, 14)
-        + 0.10 * norm(d6 if is_num(d6) else None, 0, 10)
-        + 0.06 * norm(d12 if is_num(d12) else None, 0, 14)
-        + 0.05 * norm(acc_g if is_num(acc_g) else None, 0, 6)
-        + 0.03 * norm(acc_s if is_num(acc_s) else None, 0, 6)
-        + 0.05 * norm(ice_wind_trend_6h if is_num(ice_wind_trend_6h) else None, 0, 6)
-        + 0.06 * norm(vent_now, 4, 16)
-        + 0.03 * norm(vent_d6 if is_num(vent_d6) else None, 0, 6)
+        + 0.18 * norm(sf6, 0, 10)
+        + 0.07 * norm(sf12, 0, 14)
+        + 0.06 * pf_acc_score
+        + 0.10 * norm(d6, 0, 10)
+        + 0.06 * norm(d12, 0, 14)
+        + 0.05 * norm(acc_g, 0, 6)
+        + 0.02 * norm(acc_s, 0, 6)
+        + 0.05 * norm(ice_wind_trend_6h, 0, 6)
+        + 0.05 * norm(vent_now, 4, 16)
+        + 0.03 * norm(vent_d6, 0, 6)
         + 0.04 * norm(coast_gate_now, 8, 30)
-        + 0.03 * norm(coast_gate_d6 if is_num(coast_gate_d6) else None, 0, 8)
+        + 0.03 * norm(coast_gate_d6, 0, 8)
     )
     trigger = clamp(trigger, 0, 100)
 
@@ -985,6 +1031,7 @@ def build_payload(now_dt):
             gradient >= 20
             or (is_num(d6) and d6 >= 2)
             or (is_num(sf6) and sf6 >= 2)
+            or (is_num(pressure_fall_acceleration) and pressure_fall_acceleration >= 1.5)
             or (is_num(acc_g) and acc_g >= 1)
             or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
             or (is_num(vent_now) and vent_now >= 8)
@@ -1001,7 +1048,11 @@ def build_payload(now_dt):
         risk = min(risk, 24)
 
     level, phase, horizon = classify_risk(risk)
-    if watch and level == "GRN":
+
+    ladning_active = is_ladning(reservoir, cyclone_in_zone, coupling)
+    if ladning_active and level == "GRN":
+        phase = "LADNING"
+    elif watch and level == "GRN":
         phase = "WATCH"
 
     trend_tag = "" if trend_status == "ok" else " T?"
@@ -1011,9 +1062,10 @@ def build_payload(now_dt):
     ct72_tag = compact_temp_trend_tag("CT72", ice_temp_trend_72h)
     vg_tag = compact_gate_tag("VG", vent_now)
     cg_tag = compact_gate_tag("CG", coast_gate_now)
+    lad_tag = " LAD" if ladning_active else ""
 
     message = (
-        f"{LOCATION_NAME} {level} {horizon}{trend_tag} "
+        f"{LOCATION_NAME} {level} {horizon}{trend_tag}{lad_tag} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
         f"ICE{ice_pressure:.1f} SEA{sea_pressure:.1f} "
         f"GR{gradient:.1f} "
@@ -1047,6 +1099,7 @@ def build_payload(now_dt):
             "d12": round(d12, 1) if is_num(d12) else None,
             "sf6": round(sf6, 1) if is_num(sf6) else None,
             "sf12": round(sf12, 1) if is_num(sf12) else None,
+            "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
             "iceWind": round(ice_wind, 1) if is_num(ice_wind) else None,
             "iceWindTrend6h": round(ice_wind_trend_6h, 1) if is_num(ice_wind_trend_6h) else None,
             "coastIceDeltaT": round(dT_coast_ice, 1) if is_num(dT_coast_ice) else None,
@@ -1069,7 +1122,10 @@ def build_payload(now_dt):
         },
         "derived": {
             "watch": watch,
+            "isLadning": ladning_active,
             "sector": sector,
+            "cycloneInTriggerZone": cyclone_in_zone,
+            "cycloneScore": int(round(cyclone_score)),
             "usedInstanceIds": [latest],
             "fetchErrors": fetch_errors,
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
@@ -1102,6 +1158,7 @@ def build_payload(now_dt):
             "gradientBoost": round(gboost, 2),
             "accG": round(acc_g, 1) if is_num(acc_g) else None,
             "accS": round(acc_s, 1) if is_num(acc_s) else None,
+            "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
             "qualityFlags": sorted(set(quality_flags)),
@@ -1185,6 +1242,7 @@ def write_stale_payload(error):
             "d12": None,
             "sf6": None,
             "sf12": None,
+            "pressureFallAcceleration": None,
             "iceWind": None,
             "iceWindTrend6h": None,
             "coastIceDeltaT": None,
@@ -1207,7 +1265,10 @@ def write_stale_payload(error):
         },
         "derived": {
             "watch": False,
+            "isLadning": False,
             "sector": None,
+            "cycloneInTriggerZone": False,
+            "cycloneScore": 0,
             "usedInstanceIds": [],
             "fetchErrors": {},
             "seaMinLon": None,
@@ -1240,6 +1301,7 @@ def write_stale_payload(error):
             "gradientBoost": None,
             "accG": None,
             "accS": None,
+            "pressureFallAcceleration": None,
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
             "qualityFlags": ["hard_failure"],
