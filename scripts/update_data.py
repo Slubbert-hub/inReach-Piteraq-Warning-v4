@@ -852,8 +852,29 @@ def build_payload(now_dt):
     d6 = (gradient - snap_6["gradient"]) if snap_6 and is_num(snap_6.get("gradient")) and is_num(gradient) else None
     d12 = (gradient - snap_12["gradient"]) if snap_12 and is_num(snap_12.get("gradient")) and is_num(gradient) else None
 
-    sf6 = (snap_6["seaPressure"] - sea_pressure) if snap_6 and is_num(snap_6.get("seaPressure")) and is_num(sea_pressure) else None
-    sf12 = (snap_12["seaPressure"] - sea_pressure) if snap_12 and is_num(snap_12.get("seaPressure")) and is_num(sea_pressure) else None
+    sea_pressure_delta_6h = (
+        sea_pressure - snap_6["seaPressure"]
+        if snap_6 and is_num(snap_6.get("seaPressure")) and is_num(sea_pressure)
+        else None
+    )
+    sea_pressure_delta_12h = (
+        sea_pressure - snap_12["seaPressure"]
+        if snap_12 and is_num(snap_12.get("seaPressure")) and is_num(sea_pressure)
+        else None
+    )
+
+    sf6 = max(0.0, snap_6["seaPressure"] - sea_pressure) \
+        if snap_6 and is_num(snap_6.get("seaPressure")) and is_num(sea_pressure) else None
+    sf12 = max(0.0, snap_12["seaPressure"] - sea_pressure) \
+        if snap_12 and is_num(snap_12.get("seaPressure")) and is_num(sea_pressure) else None
+
+    earlier_6h_fall = None
+    pressure_fall_acceleration = None
+    if is_num(sf6) and is_num(sf12):
+        earlier_6h_fall = max(0.0, sf12 - sf6)
+        pressure_fall_acceleration = sf6 - earlier_6h_fall
+        if pressure_fall_acceleration > 2.0:
+            quality_flags.append("pressure_fall_accelerating")
 
     ice_wind_trend_6h = (ice_wind - snap_6["iceWind"]) if snap_6 and is_num(snap_6.get("iceWind")) and is_num(ice_wind) else None
 
@@ -874,19 +895,13 @@ def build_payload(now_dt):
         acc_uncertain = True
 
     if is_num(sf6) and is_num(sf12):
-        acc_s = sf6 - (sf12 - sf6)
+        acc_s = pressure_fall_acceleration
     elif is_num(sf6):
         acc_s = sf6
         acc_uncertain = True
     else:
         acc_s = None
         acc_uncertain = True
-
-    pressure_fall_acceleration = None
-    if is_num(sf6) and is_num(sf12):
-        pressure_fall_acceleration = sf6 - (sf12 - sf6)
-        if pressure_fall_acceleration > 2.0:
-            quality_flags.append("pressure_fall_accelerating")
 
     if trend_status == "partial":
         quality_flags.append("partial_trend_window")
@@ -1042,6 +1057,17 @@ def build_payload(now_dt):
     base = 0.58 * trigger + 0.28 * reservoir + 0.14 * potential
     risk = base * (0.56 + 0.44 * (coupling / 100.0))
 
+    piteraq_mismatch = (
+        is_num(reservoir) and reservoir < 15
+        and is_num(vent_now) and vent_now < 0
+        and is_num(coast_gate_now) and coast_gate_now < 6
+    )
+    if piteraq_mismatch:
+        risk *= 0.75
+        potential *= 0.80
+        trigger *= 0.90
+        quality_flags.append("synoptic_storm_more_than_piteraq")
+
     if trigger < 20:
         risk = min(risk, 34)
     if trigger < 35 and reservoir < 25:
@@ -1065,14 +1091,17 @@ def build_payload(now_dt):
     lad_tag = " LAD" if ladning_active else ""
 
     message = (
-        f"{LOCATION_NAME} {level} {horizon}{trend_tag}{lad_tag} "
+        f"{level}{int(round(risk))} {horizon}{trend_tag}{lad_tag} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
-        f"ICE{ice_pressure:.1f} SEA{sea_pressure:.1f} "
+        f"ICE{ice_pressure:.0f} SEA{sea_pressure:.0f} "
         f"GR{gradient:.1f} "
         f"d6{fmt_msg_num(d6, signed=True)} "
         f"d12{fmt_msg_num(d12, signed=True)} "
-        f"SF6{fmt_msg_num(sf6, signed=True)} "
-        f"SF12{fmt_msg_num(sf12, signed=True)} "
+        f"SΔ6{fmt_msg_num(sea_pressure_delta_6h, signed=True)} "
+        f"SΔ12{fmt_msg_num(sea_pressure_delta_12h, signed=True)} "
+        f"SF6{fmt_msg_num(sf6)} "
+        f"SF12{fmt_msg_num(sf12)} "
+        f"PFA{fmt_msg_num(pressure_fall_acceleration, signed=True)} "
         f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
         f"{ct24_tag} {ct72_tag} "
         f"{vg_tag} {cg_tag} "
@@ -1097,6 +1126,8 @@ def build_payload(now_dt):
             "gradient": round(gradient, 1) if is_num(gradient) else None,
             "d6": round(d6, 1) if is_num(d6) else None,
             "d12": round(d12, 1) if is_num(d12) else None,
+            "seaPressureDelta6h": round(sea_pressure_delta_6h, 1) if is_num(sea_pressure_delta_6h) else None,
+            "seaPressureDelta12h": round(sea_pressure_delta_12h, 1) if is_num(sea_pressure_delta_12h) else None,
             "sf6": round(sf6, 1) if is_num(sf6) else None,
             "sf12": round(sf12, 1) if is_num(sf12) else None,
             "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
@@ -1126,6 +1157,7 @@ def build_payload(now_dt):
             "sector": sector,
             "cycloneInTriggerZone": cyclone_in_zone,
             "cycloneScore": int(round(cyclone_score)),
+            "piteraqMismatch": piteraq_mismatch,
             "usedInstanceIds": [latest],
             "fetchErrors": fetch_errors,
             "seaMinLon": round(now_fields["seaMinLon"], 3) if is_num(now_fields["seaMinLon"]) else None,
@@ -1158,6 +1190,7 @@ def build_payload(now_dt):
             "gradientBoost": round(gboost, 2),
             "accG": round(acc_g, 1) if is_num(acc_g) else None,
             "accS": round(acc_s, 1) if is_num(acc_s) else None,
+            "earlier6hFall": round(earlier_6h_fall, 1) if is_num(earlier_6h_fall) else None,
             "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
@@ -1240,6 +1273,8 @@ def write_stale_payload(error):
             "gradient": None,
             "d6": None,
             "d12": None,
+            "seaPressureDelta6h": None,
+            "seaPressureDelta12h": None,
             "sf6": None,
             "sf12": None,
             "pressureFallAcceleration": None,
@@ -1269,6 +1304,7 @@ def write_stale_payload(error):
             "sector": None,
             "cycloneInTriggerZone": False,
             "cycloneScore": 0,
+            "piteraqMismatch": False,
             "usedInstanceIds": [],
             "fetchErrors": {},
             "seaMinLon": None,
@@ -1301,6 +1337,7 @@ def write_stale_payload(error):
             "gradientBoost": None,
             "accG": None,
             "accS": None,
+            "earlier6hFall": None,
             "pressureFallAcceleration": None,
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
