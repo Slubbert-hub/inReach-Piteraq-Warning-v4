@@ -1,43 +1,43 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-14 05:03 UTC",
+    "updatedAt": "2026-03-14 07:24 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest available forecast step",
-    "instanceId": "2026-03-14T000000Z",
-    "lastSuccessfulUpdate": "2026-03-14 05:03 UTC",
+    "instanceId": "2026-03-14T030000Z",
+    "lastSuccessfulUpdate": "2026-03-14 07:24 UTC",
     "lastAttemptFailed": null,
     "stale": false
   },
   "inputs": {
-    "icePressure": 996.5,
-    "seaPressure": 987.1,
-    "gradient": 9.4,
-    "d6": -3.2,
-    "d12": -4.1,
-    "sf6": -2.9,
-    "sf12": -6.0,
-    "pressureFallAcceleration": 0.2,
-    "iceWind": 15.1,
-    "iceWindTrend6h": -2.7,
-    "coastIceDeltaT": 26.9,
-    "iceTempTrend24h": 1.1,
+    "icePressure": 995.0,
+    "seaPressure": 986.1,
+    "gradient": 8.9,
+    "d6": -4.3,
+    "d12": -3.8,
+    "sf6": -1.9,
+    "sf12": -3.6,
+    "pressureFallAcceleration": -0.2,
+    "iceWind": 17.6,
+    "iceWindTrend6h": -0.4,
+    "coastIceDeltaT": 25.8,
+    "iceTempTrend24h": 2.8,
     "iceTempTrend72h": null,
-    "ventilIndex": -1.9,
-    "ventilD6": -1.3,
-    "ventilD12": -0.4,
-    "coastSeaPressure": 989.7,
-    "coastGate": 6.8,
-    "coastGateD6": -2.9,
-    "coastGateD12": -3.1
+    "ventilIndex": -2.9,
+    "ventilD6": -2.3,
+    "ventilD12": -2.0,
+    "coastSeaPressure": 990.5,
+    "coastGate": 4.4,
+    "coastGateD6": -6.5,
+    "coastGateD12": -5.2
   },
   "scores": {
-    "reservoir": 12,
-    "trigger": 4,
-    "coupling": 56,
+    "reservoir": 9,
+    "trigger": 3,
+    "coupling": 58,
     "potential": 18,
-    "risk": 7
+    "risk": 6
   },
   "derived": {
     "watch": false,
@@ -46,45 +46,44 @@
     "cycloneInTriggerZone": true,
     "cycloneScore": 100,
     "usedInstanceIds": [
-      "2026-03-14T000000Z"
+      "2026-03-14T030000Z"
     ],
     "fetchErrors": {
-      "2026-03-14T000000Z": {
-        "sea:C2": "TypeError: exceptions must derive from BaseException",
-        "sea:E1": "ReadTimeout: HTTPSConnectionPool(host='opendataapi.dmi.dk', port=443): Read timed out. (read timeout=40)"
+      "2026-03-14T030000Z": {
+        "sea:E1": "TypeError: exceptions must derive from BaseException"
       }
     },
     "seaMinLon": -34.9,
     "seaMinLat": 62.8,
-    "seaCentroidPressure": 988.2,
-    "seaCentroidLon": -32.413,
-    "seaCentroidLat": 63.989,
+    "seaCentroidPressure": 988.0,
+    "seaCentroidLon": -32.411,
+    "seaCentroidLat": 64.026,
     "seaCentroidSector": "M2",
-    "seaMinCentroidSpread": 1.0,
+    "seaMinCentroidSpread": 1.9,
     "seaMinMotionKm6": 126.6,
-    "westMeanPressure": 987.7,
-    "midMeanPressure": 988.9,
-    "eastMeanPressure": 990.7,
-    "coastSeaPressure": 989.7,
-    "gateMid": -1.1,
-    "gateEast": -3.0,
-    "ventilIndex": -1.9,
-    "ventilD6": -1.3,
-    "ventilD12": -0.4,
-    "coastGate": 6.8,
-    "coastGateD6": -2.9,
-    "coastGateD12": -3.1,
-    "icePressureAnomNow": -16.7,
-    "icePressureAnom72hMean": -20.9,
-    "icePressureTrend24h": 6.1,
+    "westMeanPressure": 987.3,
+    "midMeanPressure": 989.3,
+    "eastMeanPressure": 991.7,
+    "coastSeaPressure": 990.5,
+    "gateMid": -2.0,
+    "gateEast": -4.4,
+    "ventilIndex": -2.9,
+    "ventilD6": -2.3,
+    "ventilD12": -2.0,
+    "coastGate": 4.4,
+    "coastGateD6": -6.5,
+    "coastGateD12": -5.2,
+    "icePressureAnomNow": -18.3,
+    "icePressureAnom72hMean": -20.8,
+    "icePressureTrend24h": 3.7,
     "icePressureTrend72h": null,
-    "coldSupport72h": 33.8,
-    "katabaticPotential": 35,
-    "seaLowDepth": 12.9,
+    "coldSupport72h": 33.6,
+    "katabaticPotential": 33,
+    "seaLowDepth": 13.9,
     "gradientBoost": 0.0,
-    "accG": -2.3,
-    "accS": 0.2,
-    "pressureFallAcceleration": 0.2,
+    "accG": -4.8,
+    "accS": -0.2,
+    "pressureFallAcceleration": -0.2,
     "accUncertain": false,
     "trendDataStatus": "ok",
     "qualityFlags": [
@@ -94,23 +93,23 @@
     ],
     "selectedTimes": {
       "now": {
-        "validTime": "2026-03-14T05:00:00.000Z",
-        "diffHours": 0.06
+        "validTime": "2026-03-14T07:00:00.000Z",
+        "diffHours": 0.4
       },
-      "h6_from_history": "2026-03-13T23:00:00Z",
-      "h12_from_history": "2026-03-13T17:00:00Z",
-      "h24_from_history": "2026-03-13T05:00:00Z",
+      "h6_from_history": "2026-03-14T00:00:00Z",
+      "h12_from_history": "2026-03-13T19:00:00Z",
+      "h24_from_history": "2026-03-13T08:00:00Z",
       "h72_from_history": null
     },
     "usedIcePressurePoints": 3,
     "usedIceTempPoints": 3,
     "usedIceWindPoints": 3,
-    "usedSeaPressurePoints": 8,
-    "usedSeaTempPoints": 10
+    "usedSeaPressurePoints": 9,
+    "usedSeaTempPoints": 11
   },
   "output": {
     "level": "GRN",
     "phase": "PITERAQ LOW",
-    "message": "TASIILAQ GRN 12-24T RES12 TRG4 CPL56 ICE996.5 SEA987.1 GR9.4 d6-3.2 d12-4.1 SF6-2.9 SF12-6.0 DT27 CT24+1 CT72? VG-2 CG7 AG-2 AS0"
+    "message": "TASIILAQ GRN 12-24T RES9 TRG3 CPL58 ICE995.0 SEA986.1 GR8.9 d6-4.3 d12-3.8 SF6-1.9 SF12-3.6 DT26 CT24+3 CT72? VG-3 CG4 AG-5 AS0"
   }
 }
