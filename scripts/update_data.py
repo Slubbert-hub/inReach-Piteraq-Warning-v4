@@ -13,6 +13,7 @@ COL = "harmonie_ig_sf"
 LOCATION_NAME = "TASIILAQ"
 DATA_FILE = Path("data.json")
 HISTORY_FILE = Path("history.json")
+SUMMARY_FILE = Path("summary.json")
 
 CONNECT_TIMEOUT = 8
 READ_TIMEOUT = 40
@@ -158,6 +159,41 @@ def compact_gate_tag(prefix, value):
     if not is_num(value):
         return f"{prefix}?"
     return f"{prefix}{int(round(value))}"
+
+
+def write_summary_file(payload):
+    meta = payload.get("meta", {})
+    scores = payload.get("scores", {})
+    inputs = payload.get("inputs", {})
+    derived = payload.get("derived", {})
+    output = payload.get("output", {})
+
+    summary = {
+        "updatedAt": meta.get("updatedAt"),
+        "location": meta.get("location"),
+        "model": meta.get("model"),
+        "instanceId": meta.get("instanceId"),
+        "lastSuccessfulUpdate": meta.get("lastSuccessfulUpdate"),
+        "forecastInfo": meta.get("forecastInfo"),
+        "stale": meta.get("stale", False),
+        "level": output.get("level"),
+        "phase": output.get("phase"),
+        "risk": scores.get("risk"),
+        "watch": derived.get("watch", False),
+        "message": output.get("message"),
+        "trendDataStatus": derived.get("trendDataStatus"),
+        "qualityFlags": derived.get("qualityFlags", []),
+        "reservoir": scores.get("reservoir"),
+        "trigger": scores.get("trigger"),
+        "coupling": scores.get("coupling"),
+        "icePressure": inputs.get("icePressure"),
+        "seaPressure": inputs.get("seaPressure"),
+        "gradient": inputs.get("gradient"),
+        "sf6": inputs.get("sf6"),
+        "accG": derived.get("accG"),
+    }
+
+    save_json(SUMMARY_FILE, summary)
 
 
 def get_json(url, params=None, retries=REQUEST_RETRIES):
@@ -1260,6 +1296,7 @@ def write_stale_payload(error):
         existing["output"] = existing_output
 
         save_json(DATA_FILE, existing)
+        write_summary_file(existing)
         print(f"Preserved last good dataset; marked as stale due to {err_name}")
         return
 
@@ -1372,6 +1409,7 @@ def write_stale_payload(error):
         },
     }
     save_json(DATA_FILE, fallback)
+    write_summary_file(fallback)
     print(f"No prior good dataset; wrote fallback due to {err_name}")
 
 
@@ -1379,7 +1417,8 @@ if __name__ == "__main__":
     try:
         payload = build_payload(now_utc())
         save_json(DATA_FILE, payload)
-        print("Updated data.json/history.json successfully")
+        write_summary_file(payload)
+        print("Updated data.json/history.json/summary.json successfully")
         print("trendDataStatus:", payload["derived"]["trendDataStatus"])
         print("used instances:", payload["derived"]["usedInstanceIds"])
         if payload["derived"].get("qualityFlags"):
