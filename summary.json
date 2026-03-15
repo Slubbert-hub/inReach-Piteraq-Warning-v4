@@ -1,0 +1,32 @@
+{
+  "updatedAt": "2026-03-15 20:05 UTC",
+  "location": "TASIILAQ",
+  "model": "harmonie_ig_sf",
+  "instanceId": "2026-03-15T150000Z",
+  "lastSuccessfulUpdate": "2026-03-15 20:05 UTC",
+  "forecastInfo": "Latest available forecast step",
+  "stale": false,
+  "level": "GRN",
+  "phase": "PITERAQ LOW",
+  "risk": 14,
+  "watch": false,
+  "message": "GRN14 12-24T RES32 TRG11 CPL53 ICE1006 SEA987 GR18.3 d6-6.0 d12-13.3 SΔ6+6.6 SΔ12+15.7 SF60.0 SF120.0 PFA+0.0 DT27 CT24-6 CT72+7 VG2 CG? AG1 AS0",
+  "trendDataStatus": "ok",
+  "qualityFlags": [
+    "cold_reservoir_building_24h",
+    "missing_coast_gate",
+    "missing_ice_temperature_partial",
+    "missing_ice_wind_partial",
+    "missing_sea_temperature_partial",
+    "partial_point_fetch_errors",
+    "sea_field_spread_moderate"
+  ],
+  "reservoir": 32,
+  "trigger": 11,
+  "coupling": 53,
+  "icePressure": 1005.5,
+  "seaPressure": 987.2,
+  "gradient": 18.3,
+  "sf6": 0.0,
+  "accG": 1.3
+}
