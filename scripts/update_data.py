@@ -924,7 +924,6 @@ def build_payload(now_dt):
                 quality_flags.append("sea_min_motion_high")
 
     ice_pressure_anom_now = current_snapshot["icePressureAnomNow"]
-    cold_support_now = current_snapshot["coldSupportNow"]
     dT_coast_ice = current_snapshot["dTCoastIceNow"]
     sea_low_depth = max(0.0, 1000.0 - sea_pressure) if is_num(sea_pressure) else None
 
@@ -1033,11 +1032,13 @@ def build_payload(now_dt):
     )
     trigger = clamp(trigger, 0, 100)
 
-    potential = clamp(
+    potential_raw = clamp(
         potential_index(reservoir, coupling, gradient, d6, ice_wind_trend_6h),
         0,
         100,
     )
+    potential_reservoir_factor = 0.35 + 0.65 * (reservoir / 100.0)
+    potential = clamp(potential_raw * potential_reservoir_factor, 0, 100)
 
     watch = (
         (reservoir >= 30 or potential >= 45)
@@ -1054,7 +1055,7 @@ def build_payload(now_dt):
         )
     )
 
-    base = 0.58 * trigger + 0.28 * reservoir + 0.14 * potential
+    base = 0.60 * trigger + 0.32 * reservoir + 0.08 * potential
     risk = base * (0.56 + 0.44 * (coupling / 100.0))
 
     piteraq_mismatch = (
@@ -1074,6 +1075,11 @@ def build_payload(now_dt):
         risk = min(risk, 24)
 
     level, phase, horizon = classify_risk(risk)
+
+    if piteraq_mismatch and phase == "PITERAQ BUILDING":
+        phase = "SYNOPTIC BUILDING"
+    elif piteraq_mismatch and phase == "PITERAQ LIKELY":
+        phase = "SYNOPTIC STORM"
 
     ladning_active = is_ladning(reservoir, cyclone_in_zone, coupling)
     if ladning_active and level == "GRN":
@@ -1192,6 +1198,8 @@ def build_payload(now_dt):
             "accS": round(acc_s, 1) if is_num(acc_s) else None,
             "earlier6hFall": round(earlier_6h_fall, 1) if is_num(earlier_6h_fall) else None,
             "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
+            "potentialRaw": int(round(potential_raw)),
+            "potentialReservoirFactor": round(potential_reservoir_factor, 2),
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
             "qualityFlags": sorted(set(quality_flags)),
@@ -1339,6 +1347,8 @@ def write_stale_payload(error):
             "accS": None,
             "earlier6hFall": None,
             "pressureFallAcceleration": None,
+            "potentialRaw": None,
+            "potentialReservoirFactor": None,
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
             "qualityFlags": ["hard_failure"],
