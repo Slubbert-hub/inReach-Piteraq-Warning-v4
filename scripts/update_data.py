@@ -22,7 +22,7 @@ REQUEST_RETRIES = 3
 MAX_WORKERS = 2
 
 TIME_TOLERANCE_HOURS = 2.75
-HISTORY_KEEP = 144  # 6 døgn ved timekjøring
+HISTORY_KEEP = 144
 
 ICE_PRESSURE_NORMAL_HPA = 1013.25
 
@@ -31,6 +31,13 @@ CYCLONE_TRIGGER_ZONE = {
     "lat_max": 66.0,
     "lon_min": -35.0,
     "lon_max": -20.0,
+}
+
+LP_FAVORED_SECTOR = {
+    "core_left": 330.0,
+    "core_right": 30.0,
+    "good_left": 300.0,
+    "good_right": 60.0,
 }
 
 ICE_POINTS = [
@@ -161,6 +168,93 @@ def compact_gate_tag(prefix, value):
     return f"{prefix}{int(round(value))}"
 
 
+def normalize_angle(angle):
+    return angle % 360.0
+
+
+def signed_shortest_angle_diff(a, b):
+    d = (a - b + 180.0) % 360.0 - 180.0
+    return d
+
+
+def smallest_angle_to_north(angle):
+    a = normalize_angle(angle)
+    return min(a, 360.0 - a)
+
+
+def point_in_wrapped_sector(angle, left_deg, right_deg):
+    a = normalize_angle(angle)
+    left = normalize_angle(left_deg)
+    right = normalize_angle(right_deg)
+    if left <= right:
+        return left <= a <= right
+    return a >= left or a <= right
+
+
+def bearing_deg(from_lon, from_lat, to_lon, to_lat):
+    if not all(is_num(v) for v in [from_lon, from_lat, to_lon, to_lat]):
+        return None
+
+    phi1 = math.radians(from_lat)
+    phi2 = math.radians(to_lat)
+    dlon = math.radians(to_lon - from_lon)
+
+    y = math.sin(dlon) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlon)
+    brng = math.degrees(math.atan2(y, x))
+    return normalize_angle(brng)
+
+
+def haversine_km(lon1, lat1, lon2, lat2):
+    if not all(is_num(v) for v in [lon1, lat1, lon2, lat2]):
+        return None
+    r = 6371.0
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
+
+
+def lp_sector_score(bearing):
+    if not is_num(bearing):
+        return 0.0
+    if point_in_wrapped_sector(bearing, 330.0, 30.0):
+        dist = smallest_angle_to_north(bearing)
+        return clamp(100.0 - (dist / 30.0) * 20.0, 80.0, 100.0)
+    if point_in_wrapped_sector(bearing, 300.0, 60.0):
+        dist = max(0.0, smallest_angle_to_north(bearing) - 30.0)
+        return clamp(80.0 - (dist / 30.0) * 30.0, 50.0, 80.0)
+    if point_in_wrapped_sector(bearing, 240.0, 120.0):
+        south_dist = abs(abs(signed_shortest_angle_diff(bearing, 180.0)))
+        return clamp(35.0 - norm(south_dist, 0.0, 60.0) * 35.0, 0.0, 35.0)
+    return 20.0
+
+
+def lp_alignment_label(bearing):
+    if not is_num(bearing):
+        return "unknown"
+    if point_in_wrapped_sector(bearing, 330.0, 30.0):
+        return "core"
+    if point_in_wrapped_sector(bearing, 300.0, 60.0):
+        return "favored"
+    if point_in_wrapped_sector(bearing, 240.0, 120.0):
+        return "side"
+    return "south"
+
+
+def lp_trend_toward_favored_sector(now_bearing, prev_bearing):
+    if not (is_num(now_bearing) and is_num(prev_bearing)):
+        return None, None, False
+    now_dist = smallest_angle_to_north(now_bearing)
+    prev_dist = smallest_angle_to_north(prev_bearing)
+    trend = prev_dist - now_dist
+    approaching = trend > 3.0
+    return now_dist, trend, approaching
+
+
 def write_summary_file(payload):
     meta = payload.get("meta", {})
     scores = payload.get("scores", {})
@@ -191,6 +285,9 @@ def write_summary_file(payload):
         "gradient": inputs.get("gradient"),
         "sf6": inputs.get("sf6"),
         "accG": derived.get("accG"),
+        "lpBearing": derived.get("lpBearingFromSea"),
+        "lpSectorScore": derived.get("lpSectorScore"),
+        "lpApproachingFavoredSector": derived.get("lpApproachingFavoredSector"),
     }
 
     save_json(SUMMARY_FILE, summary)
@@ -849,7 +946,7 @@ def build_payload(now_dt):
 
     snap_6 = find_history_snapshot(
         history, dt_now - timedelta(hours=6), TREND_TOLERANCES["h6"],
-        required_keys=["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate"]
+        required_keys=["icePressure", "seaPressure", "iceWind", "ventilIndex", "coastGate", "seaCentroidLon", "seaCentroidLat"]
     )
     snap_12 = find_history_snapshot(
         history, dt_now - timedelta(hours=12), TREND_TOLERANCES["h12"],
@@ -1025,14 +1122,56 @@ def build_payload(now_dt):
     if not cyclone_in_zone:
         quality_flags.append("cyclone_outside_trigger_zone")
 
+    sea_ref_lon = now_fields.get("seaMinLon")
+    sea_ref_lat = now_fields.get("seaMinLat")
+    lp_lon = now_fields.get("seaCentroidLon")
+    lp_lat = now_fields.get("seaCentroidLat")
+    lp_p = now_fields.get("seaCentroidPressure")
+
+    lp_bearing_from_sea = bearing_deg(sea_ref_lon, sea_ref_lat, lp_lon, lp_lat)
+    lp_sector_score_now = lp_sector_score(lp_bearing_from_sea)
+    lp_alignment_now = lp_alignment_label(lp_bearing_from_sea)
+
+    prev_lp_bearing = None
+    lp_bearing_dist_now = None
+    lp_bearing_trend_6h = None
+    lp_approaching_favored = False
+    if snap_6:
+        prev_lp_bearing = bearing_deg(
+            snap_6.get("seaMinLon"),
+            snap_6.get("seaMinLat"),
+            snap_6.get("seaCentroidLon"),
+            snap_6.get("seaCentroidLat"),
+        )
+        lp_bearing_dist_now, lp_bearing_trend_6h, lp_approaching_favored = lp_trend_toward_favored_sector(
+            lp_bearing_from_sea, prev_lp_bearing
+        )
+
+    lp_offset_hpa = (sea_pressure - lp_p) if is_num(sea_pressure) and is_num(lp_p) else None
+    lp_distance_km = haversine_km(sea_ref_lon, sea_ref_lat, lp_lon, lp_lat)
+
+    if lp_alignment_now == "core":
+        quality_flags.append("lp_core_alignment")
+    elif lp_alignment_now == "favored":
+        quality_flags.append("lp_favored_alignment")
+    if lp_approaching_favored:
+        quality_flags.append("lp_approaching_favored_sector")
+
     coupling = 100 * (
-        0.35 * (cyclone_score / 100.0)
-        + 0.10 * (sector_score / 100.0)
+        0.29 * (cyclone_score / 100.0)
+        + 0.12 * (lp_sector_score_now / 100.0)
+        + 0.08 * (sector_score / 100.0)
         + 0.16 * norm(sea_low_depth, 5, 30)
         + 0.10 * norm(ice_wind, 4, 20)
-        + 0.18 * norm(vent_now, 4, 16)
-        + 0.11 * norm(coast_gate_now, 8, 30)
+        + 0.15 * norm(vent_now, 4, 16)
+        + 0.10 * norm(coast_gate_now, 8, 30)
     )
+    if lp_alignment_now == "core":
+        coupling += 4.0
+    elif lp_alignment_now == "favored":
+        coupling += 2.0
+    if lp_approaching_favored:
+        coupling += 2.0
     coupling = clamp(coupling, 0, 100)
 
     thermal_component = 100 * (
@@ -1066,6 +1205,8 @@ def build_payload(now_dt):
         + 0.04 * norm(coast_gate_now, 8, 30)
         + 0.03 * norm(coast_gate_d6, 0, 8)
     )
+    if lp_approaching_favored:
+        trigger += 1.5
     trigger = clamp(trigger, 0, 100)
 
     potential_raw = clamp(
@@ -1088,6 +1229,7 @@ def build_payload(now_dt):
             or (is_num(ice_wind_trend_6h) and ice_wind_trend_6h >= 2)
             or (is_num(vent_now) and vent_now >= 8)
             or (is_num(coast_gate_now) and coast_gate_now >= 16)
+            or lp_approaching_favored
         )
     )
 
@@ -1130,24 +1272,19 @@ def build_payload(now_dt):
     ct72_tag = compact_temp_trend_tag("CT72", ice_temp_trend_72h)
     vg_tag = compact_gate_tag("VG", vent_now)
     cg_tag = compact_gate_tag("CG", coast_gate_now)
+    lpb_tag = compact_score_tag("LPB", lp_bearing_from_sea)
+    lpv_tag = compact_score_tag("LPV", lp_bearing_trend_6h)
+    lps_tag = compact_score_tag("LPS", lp_sector_score_now)
     lad_tag = " LAD" if ladning_active else ""
 
     message = (
         f"{level}{int(round(risk))} {horizon}{trend_tag}{lad_tag} "
         f"RES{int(round(reservoir))} TRG{int(round(trigger))} CPL{int(round(coupling))} "
         f"ICE{ice_pressure:.0f} SEA{sea_pressure:.0f} "
-        f"GR{gradient:.1f} "
-        f"d6{fmt_msg_num(d6, signed=True)} "
-        f"d12{fmt_msg_num(d12, signed=True)} "
-        f"SΔ6{fmt_msg_num(sea_pressure_delta_6h, signed=True)} "
-        f"SΔ12{fmt_msg_num(sea_pressure_delta_12h, signed=True)} "
+        f"GR{gradient:.1f} {ag_tag} "
         f"SF6{fmt_msg_num(sf6)} "
-        f"SF12{fmt_msg_num(sf12)} "
-        f"PFA{fmt_msg_num(pressure_fall_acceleration, signed=True)} "
-        f"DT{fmt_msg_num(dT_coast_ice, digits=0)} "
-        f"{ct24_tag} {ct72_tag} "
-        f"{vg_tag} {cg_tag} "
-        f"{ag_tag} {as_tag}"
+        f"{lpb_tag} {lpv_tag} {lps_tag} "
+        f"{vg_tag} {cg_tag} {ct24_tag}"
     )
 
     payload = {
@@ -1236,6 +1373,15 @@ def build_payload(now_dt):
             "pressureFallAcceleration": round(pressure_fall_acceleration, 1) if is_num(pressure_fall_acceleration) else None,
             "potentialRaw": int(round(potential_raw)),
             "potentialReservoirFactor": round(potential_reservoir_factor, 2),
+            "lpBearingFromSea": round(lp_bearing_from_sea, 1) if is_num(lp_bearing_from_sea) else None,
+            "lpPreviousBearingFromSea": round(prev_lp_bearing, 1) if is_num(prev_lp_bearing) else None,
+            "lpBearingDistanceToNorth": round(lp_bearing_dist_now, 1) if is_num(lp_bearing_dist_now) else None,
+            "lpBearingTrend6h": round(lp_bearing_trend_6h, 1) if is_num(lp_bearing_trend_6h) else None,
+            "lpApproachingFavoredSector": lp_approaching_favored,
+            "lpSectorScore": int(round(lp_sector_score_now)),
+            "lpAlignmentLabel": lp_alignment_now,
+            "lpOffsetHpa": round(lp_offset_hpa, 1) if is_num(lp_offset_hpa) else None,
+            "lpDistanceKm": round(lp_distance_km, 1) if is_num(lp_distance_km) else None,
             "accUncertain": acc_uncertain,
             "trendDataStatus": trend_status,
             "qualityFlags": sorted(set(quality_flags)),
@@ -1386,6 +1532,15 @@ def write_stale_payload(error):
             "pressureFallAcceleration": None,
             "potentialRaw": None,
             "potentialReservoirFactor": None,
+            "lpBearingFromSea": None,
+            "lpPreviousBearingFromSea": None,
+            "lpBearingDistanceToNorth": None,
+            "lpBearingTrend6h": None,
+            "lpApproachingFavoredSector": False,
+            "lpSectorScore": None,
+            "lpAlignmentLabel": None,
+            "lpOffsetHpa": None,
+            "lpDistanceKm": None,
             "accUncertain": False,
             "trendDataStatus": f"error: {err_name}",
             "qualityFlags": ["hard_failure"],
