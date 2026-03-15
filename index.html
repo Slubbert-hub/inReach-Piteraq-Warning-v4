@@ -1,307 +1,575 @@
-<!DOCTYPE html>
-<html lang="no">
+<!DOCTYPE html><html lang="no">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Piteraq Monitor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body{background:#0f172a;color:#fff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:20px}
-    .wrap{max-width:1280px;margin:0 auto}
-    h1{margin:0 0 8px 0;font-size:clamp(36px,6vw,64px);line-height:1}
-    .topmeta{font-size:16px;opacity:.85;line-height:1.45}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:18px}
-    .card{background:#1e293b;border-radius:22px;padding:20px;box-shadow:0 8px 20px rgba(0,0,0,.12)}
-    .label{font-size:15px;opacity:.78;margin-bottom:8px}
-    .big{font-size:clamp(24px,5vw,34px);font-weight:800;line-height:1.1}
-    .mid{font-size:clamp(22px,4vw,30px);font-weight:800;line-height:1.15}
-    .small{font-size:15px;opacity:.82;margin-top:6px;line-height:1.35}
-    .riskline{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-    .badge{display:inline-block;padding:10px 18px;border-radius:14px;font-size:18px;font-weight:900;color:#0f172a}
-    .badge.GRN{background:#22c55e}
-    .badge.YEL{background:#eab308}
-    .badge.ORG{background:#f59e0b}
-    .badge.RED{background:#ef4444;color:#fff}
-    .messagebox{background:#0b1220;border-radius:18px;padding:18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;white-space:pre-wrap;word-break:break-word;line-height:1.2;margin-top:10px}
-    .btnrow{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
-    .btn{border:none;border-radius:14px;padding:14px 22px;font-size:18px;font-weight:800;color:#fff;background:#16a34a;cursor:pointer}
-    .btn-blue{background:#3b82f6}
-    .statuswarn{color:#fbbf24;font-weight:700}
-    .statusok{color:#86efac;font-weight:700}
-    .statuserror{color:#fca5a5;font-weight:700}
-    .statusstale{color:#fdba74;font-weight:800}
-    .statusinfo{color:#93c5fd;font-weight:700}
-    .mutedwarn{color:#fbbf24;opacity:.95}
-    .sectionspace{margin-top:18px}
-    .infoBox{margin-top:12px;padding:14px 16px;border-radius:16px;background:#172132}
-    .infoBox.stale{background:#312414;border:1px solid rgba(251,191,36,.35)}
+    :root {
+      --bg: #071224;
+      --panel: #17263f;
+      --panel-2: #1d2d49;
+      --text: #f3f7ff;
+      --muted: #b9c5d9;
+      --green: #25d366;
+      --yellow: #f1c232;
+      --orange: #ff9f43;
+      --red: #ff6b6b;
+      --blue: #4b8cff;
+      --chip-text: #06111e;
+      --border: rgba(255,255,255,0.06);
+      --shadow: 0 10px 28px rgba(0,0,0,0.22);
+      --radius: 20px;
+      --radius-sm: 14px;
+    }* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: linear-gradient(180deg, #06101f 0%, #071a33 100%); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+body { min-height: 100vh; }
+
+.app {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 14px 12px 28px;
+}
+
+.stack { display: grid; gap: 12px; }
+.card {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 7vw, 4rem);
+  line-height: 0.95;
+  margin: 0 0 10px;
+  letter-spacing: -0.04em;
+}
+
+.hero .sub {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  display: grid;
+  gap: 2px;
+}
+
+.status-line {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.status-ok { color: #6ce39a; }
+.status-warn { color: var(--yellow); }
+.status-err { color: #ff8e8e; }
+
+.meta-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.stamp {
+  margin-top: 10px;
+  background: rgba(0,0,0,0.18);
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.btn {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  border-radius: 18px;
+  padding: 16px 18px;
+  background: #18b64b;
+  color: white;
+  font-weight: 800;
+  font-size: 1.1rem;
+  cursor: pointer;
+  margin-top: 14px;
+}
+
+.btn.secondary {
+  background: var(--blue);
+  width: auto;
+  padding: 14px 20px;
+  font-size: 1rem;
+}
+
+.top-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 660px) {
+  .top-grid {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+}
+
+.risk-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.risk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.risk-main {
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  min-height: 52px;
+  border-radius: 18px;
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: var(--chip-text);
+  padding: 4px 16px;
+}
+
+.chip.GRN { background: var(--green); }
+.chip.YEL { background: var(--yellow); }
+.chip.ORG { background: var(--orange); }
+.chip.RED { background: var(--red); }
+
+.phase {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.watch {
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.msg-card .msg-box {
+  background: #08111f;
+  border-radius: 18px;
+  padding: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.94rem;
+  line-height: 1.18;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.compact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 700px) {
+  .compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.metric {
+  background: var(--panel-2);
+  border-radius: 18px;
+  padding: 12px 13px;
+  min-width: 0;
+}
+
+.metric .label {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.metric .value {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  margin-bottom: 6px;
+}
+
+.metric .desc {
+  color: #d6deeb;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+
+.metric .tiny {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.25;
+  margin-top: 5px;
+}
+
+.section-title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+details {
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+details[open] { padding-bottom: 10px; }
+
+summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 15px 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+summary::-webkit-details-marker { display: none; }
+
+.summary-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.summary-sub {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.summary-caret {
+  color: var(--muted);
+  font-size: 1rem;
+  transition: transform 0.15s ease;
+}
+
+details[open] .summary-caret { transform: rotate(90deg); }
+
+.details-body {
+  padding: 0 10px 0;
+}
+
+.pill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.07);
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 0.84rem; }
+.danger { color: #ff9d9d; }
+.warn { color: var(--yellow); }
+.good { color: #82f5a9; }
+
+.footer-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding: 0 2px;
+}
+
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
+  <main class="app stack">
+    <section class="card hero">
       <h1>Piteraq Monitor</h1>
-      <div class="topmeta" id="metaLine">Laster data ...</div>
-      <div class="small" id="trendStatusLine"></div>
-      <div class="small" id="qualityFlagsLine"></div>
-      <div id="staleBox"></div>
-      <div class="small" id="historyLine"></div>
-      <div class="small">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
-      <div class="btnrow">
-        <button class="btn" id="refreshBtn" onclick="loadData(true)">Last inn nyeste lagrede varsel</button>
-      </div>
-      <div class="small" id="refreshStatus"></div>
-    </div>
-
-    <div class="grid sectionspace">
-      <div class="card">
-        <div class="label">Risk</div>
-        <div class="riskline">
-          <div class="big" id="riskLine">-</div>
-          <div class="badge" id="riskBadge">-</div>
-        </div>
-        <div class="small" id="phaseLine"></div>
-        <div class="small" id="watchLine"></div>
-        <div class="small" id="ladningLine"></div>
-        <div class="small" id="mismatchLine"></div>
-      </div>
-
-      <div class="card">
-        <div class="label">inReach message</div>
-        <div class="messagebox" id="messageBox">-</div>
-        <div class="btnrow">
-          <button class="btn btn-blue" onclick="copyMsg()">Kopier melding</button>
-        </div>
-      </div>
-
-      <div class="card"><div class="label">Reservoir</div><div class="mid" id="reservoirLine">-</div><div class="small">oppdemming over is</div></div>
-      <div class="card"><div class="label">Trigger</div><div class="mid" id="triggerLine">-</div><div class="small">gradient + trend + strait-fall + akselerasjon + gate</div></div>
-      <div class="card"><div class="label">Coupling</div><div class="mid" id="couplingLine">-</div><div class="small">syklonsone + sektor + havlav + ventil + kystgate</div></div>
-      <div class="card"><div class="label">Potential</div><div class="mid" id="potentialLine">-</div><div class="small">nærhet til kritisk piteraq-oppsett</div></div>
-
-      <div class="card"><div class="label">Cyclone trigger zone</div><div class="mid" id="cycloneScoreLine">-</div><div class="small" id="cycloneZoneLine">-</div></div>
-
-      <div class="card"><div class="label">Ice pressure</div><div class="mid" id="icePressureLine">-</div><div class="small" id="icePressureSub">-</div></div>
-      <div class="card"><div class="label">Sea pressure</div><div class="mid" id="seaPressureLine">-</div><div class="small" id="sectorLine">-</div></div>
-      <div class="card"><div class="label">Gradient</div><div class="mid" id="gradientLine">-</div><div class="small" id="gradientSub">-</div></div>
-      <div class="card"><div class="label">d6</div><div class="mid" id="d6Line">-</div><div class="small">gradientendring siste 6 timer</div></div>
-      <div class="card"><div class="label">d12</div><div class="mid" id="d12Line">-</div><div class="small">gradientendring siste 12 timer</div></div>
-
-      <div class="card"><div class="label">Sea Δ6</div><div class="mid" id="seaDelta6Line">-</div><div class="small">rå endring i strait-trykk siste 6 timer</div></div>
-      <div class="card"><div class="label">Sea Δ12</div><div class="mid" id="seaDelta12Line">-</div><div class="small">rå endring i strait-trykk siste 12 timer</div></div>
-      <div class="card"><div class="label">SF6</div><div class="mid" id="sf6Line">-</div><div class="small">fallstyrke i strait siste 6 timer</div></div>
-      <div class="card"><div class="label">SF12</div><div class="mid" id="sf12Line">-</div><div class="small">fallstyrke i strait siste 12 timer</div></div>
-      <div class="card"><div class="label">Pressure-fall acc</div><div class="mid" id="pressureFallAccLine">-</div><div class="small">endring i fallstyrke</div></div>
-
-      <div class="card"><div class="label">Akselerasjon</div><div class="mid" id="accLine">-</div><div class="small">AG = gradient · AS = strait-fall</div></div>
-
-      <div class="card"><div class="label">Ventilindeks</div><div class="mid" id="ventilLine">-</div><div class="small">synoptisk åpning i Danmarkstredet</div></div>
-      <div class="card"><div class="label">Ventil d6</div><div class="mid" id="ventilD6Line">-</div><div class="small">endring i ventil siste 6 timer</div></div>
-      <div class="card"><div class="label">Ventil d12</div><div class="mid" id="ventilD12Line">-</div><div class="small">endring i ventil siste 12 timer</div></div>
-
-      <div class="card"><div class="label">Kystnært sjøtrykk</div><div class="mid" id="coastSeaPressureLine">-</div><div class="small">snitt av K1 og K2</div></div>
-      <div class="card"><div class="label">Kystgate</div><div class="mid" id="coastGateLine">-</div><div class="small">ice pressure minus kystnært sjøtrykk</div></div>
-      <div class="card"><div class="label">Kystgate d6</div><div class="mid" id="coastGateD6Line">-</div><div class="small">endring i kystgate siste 6 timer</div></div>
-      <div class="card"><div class="label">Kystgate d12</div><div class="mid" id="coastGateD12Line">-</div><div class="small">endring i kystgate siste 12 timer</div></div>
-
-      <div class="card"><div class="label">Ice wind</div><div class="mid" id="iceWindLine">-</div><div class="small" id="iceWindSub">-</div></div>
-      <div class="card"><div class="label">Coast-ice ΔT</div><div class="mid" id="dtLine">-</div><div class="small">temperaturforskjell kyst minus is</div></div>
-      <div class="card"><div class="label">Katabatisk potensial</div><div class="mid" id="katabaticLine">-</div><div class="small" id="katabaticSub">-</div></div>
-      <div class="card"><div class="label">Kuldetrend 24t</div><div class="mid" id="iceTempTrend24hLine">-</div><div class="small" id="iceTempTrend24hSub">negativ verdi = kaldere is siste 24 timer</div></div>
-      <div class="card"><div class="label">Kuldetrend 72t</div><div class="mid" id="iceTempTrend72hLine">-</div><div class="small" id="iceTempTrend72hSub">negativ verdi = kaldere is siste 72 timer</div></div>
-    </div>
+      <div class="sub">
+        <div id="hero-location">TASIILAQ</div>
+        <div id="hero-updated">Oppdatert –</div>
+        <div id="hero-model">Modell –</div>
+      </div><div class="status-line">
+    <div id="trend-status" class="status-ok">Trendstatus: –</div>
+    <div id="quality-status" class="status-warn">Datakvalitet: –</div>
   </div>
 
-  <script>
-    function hasNumber(x){return typeof x==="number"&&Number.isFinite(x)}
-    function fmt(x,suffix=""){if(!hasNumber(x))return"mangler data";return Number(x).toFixed(1)+suffix}
-    function fmtInt(x,suffix=""){if(!hasNumber(x))return"mangler data";return Math.round(Number(x))+suffix}
-    function fmtSigned(x,suffix=""){if(!hasNumber(x))return"mangler data";const n=Number(x);return`${n>=0?"+":""}${n.toFixed(1)}${suffix}`}
-    function copyMsg(){navigator.clipboard.writeText(document.getElementById("messageBox").innerText)}
-    function setRiskBadge(level){const badge=document.getElementById("riskBadge");badge.className="badge "+(level||"");badge.innerText=level||"-"}
+  <div id="last-success" class="stamp">Sist vellykket oppdatert: –</div>
+  <div id="trend-refs" class="meta-note">Trendreferanser: –</div>
+  <div class="meta-note">Viser sist lagrede varsel. Trykk «Last inn nyeste lagrede varsel» for å laste nyeste datafil.</div>
+  <button id="reload-btn" class="btn">Last inn nyeste lagrede varsel</button>
+  <div id="last-loaded" class="meta-note">Lastet: –</div>
+</section>
 
-    function renderTrendStatus(trendStatus){
-      const el=document.getElementById("trendStatusLine");
-      if(!trendStatus||trendStatus==="-"){el.innerHTML="";return}
-      if(trendStatus==="ok"){el.innerHTML=`<span class="statusok">Trendstatus: OK</span>`;return}
-      if(String(trendStatus).startsWith("stale:")){el.innerHTML=`<span class="statusstale">Trendstatus: ${trendStatus}</span>`;return}
-      if(String(trendStatus).startsWith("error:")){el.innerHTML=`<span class="statuserror">Trendstatus: ${trendStatus}</span>`;return}
-      el.innerHTML=`<span class="statuswarn">Trendstatus: ${trendStatus}</span>`
+<section class="top-grid">
+  <div class="card risk-card">
+    <div class="eyebrow">Risk</div>
+    <div class="risk-row">
+      <div id="risk-main" class="risk-main">—</div>
+      <div id="risk-chip" class="chip GRN">GRN</div>
+    </div>
+    <div id="risk-phase" class="phase">—</div>
+    <div id="risk-watch" class="watch">Watch —</div>
+  </div>
+
+  <div class="card msg-card">
+    <div class="eyebrow">inReach message</div>
+    <div id="msg-box" class="msg-box">Laster …</div>
+    <button id="copy-btn" class="btn secondary">Kopier melding</button>
+  </div>
+</section>
+
+<section class="compact-grid" id="score-grid"></section>
+
+<details open>
+  <summary>
+    <div class="summary-main">
+      <span>Nåverdi og triggere</span>
+      <span class="summary-sub">Mest relevante drivere akkurat nå</span>
+    </div>
+    <span class="summary-caret">›</span>
+  </summary>
+  <div class="details-body">
+    <div class="compact-grid" id="primary-grid"></div>
+  </div>
+</details>
+
+<details>
+  <summary>
+    <div class="summary-main">
+      <span>Trender og endringer</span>
+      <span class="summary-sub">Retning, ikke bare nivå</span>
+    </div>
+    <span class="summary-caret">›</span>
+  </summary>
+  <div class="details-body">
+    <div class="compact-grid" id="trend-grid"></div>
+  </div>
+</details>
+
+<details>
+  <summary>
+    <div class="summary-main">
+      <span>Diagnostikk</span>
+      <span class="summary-sub">Reservoar, katabatikk og sone</span>
+    </div>
+    <span class="summary-caret">›</span>
+  </summary>
+  <div class="details-body">
+    <div class="compact-grid" id="diag-grid"></div>
+  </div>
+</details>
+
+<section class="footer-note" id="footer-note"></section>
+
+  </main>  <script>
+    const fmt1 = (v) => isNum(v) ? Number(v).toFixed(1) : 'mangler data';
+    const fmt0 = (v) => isNum(v) ? String(Math.round(v)) : 'mangler data';
+    const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+    function statusClass(text) {
+      const t = String(text || '').toLowerCase();
+      if (t.includes('ok')) return 'status-ok';
+      if (t.includes('error') || t.includes('insufficient') || t.includes('stale')) return 'status-err';
+      return 'status-warn';
     }
 
-    function renderQualityFlags(flags){
-      const el=document.getElementById("qualityFlagsLine");
-      if(!Array.isArray(flags)||flags.length===0){el.innerHTML="";return}
-      el.innerHTML=`<span class="statuswarn">Datakvalitet: ${flags.join(", ")}</span>`
+    function chipClass(level) {
+      return ['GRN','YEL','ORG','RED'].includes(level) ? level : 'GRN';
     }
 
-    function renderStaleInfo(meta){
-      const box=document.getElementById("staleBox");
-      const stale=!!meta.stale;
-      const lastSuccessfulUpdate=meta.lastSuccessfulUpdate||null;
-      const lastAttemptFailed=meta.lastAttemptFailed||null;
-      if(!stale&&!lastSuccessfulUpdate&&!lastAttemptFailed){box.innerHTML="";return}
-      if(stale){
-        box.innerHTML=`<div class="infoBox stale">
-            <div class="statusstale">Viser sist vellykkede lagrede varsel.</div>
-            <div class="small">Siste oppdateringsforsøk feilet${lastAttemptFailed?`: ${lastAttemptFailed}`:"."}</div>
-            <div class="small">${lastSuccessfulUpdate?`Sist vellykket oppdatert: ${lastSuccessfulUpdate}`:"Sist vellykket oppdatering er ukjent."}</div>
-          </div>`;
-        return;
-      }
-      if(lastSuccessfulUpdate){
-        box.innerHTML=`<div class="infoBox"><div class="small">Sist vellykket oppdatert: ${lastSuccessfulUpdate}</div></div>`;
-        return;
-      }
-      box.innerHTML="";
+    function descSigned(v, unit='') {
+      if (!isNum(v)) return 'mangler data';
+      const n = Number(v);
+      const sign = n > 0 ? '+' : '';
+      return `${sign}${n.toFixed(1)}${unit}`;
     }
 
-    function renderHistoryInfo(selectedTimes){
-      const el=document.getElementById("historyLine");
-      if(!selectedTimes||typeof selectedTimes!=="object"){el.innerHTML="";return}
-      const parts=[];
-      if(selectedTimes.now?.validTime)parts.push(`now: ${selectedTimes.now.validTime}`);
-      if(selectedTimes.h6_from_history)parts.push(`6t: ${selectedTimes.h6_from_history}`);
-      if(selectedTimes.h12_from_history)parts.push(`12t: ${selectedTimes.h12_from_history}`);
-      if(selectedTimes.h24_from_history)parts.push(`24t: ${selectedTimes.h24_from_history}`);
-      if(selectedTimes.h72_from_history)parts.push(`72t: ${selectedTimes.h72_from_history}`);
-      el.innerText=parts.length?`Trendreferanser: ${parts.join(" · ")}`:"";
+    function metricCard({label, value, desc, tiny=''}) {
+      return `
+        <article class="metric">
+          <div class="label">${label}</div>
+          <div class="value">${value}</div>
+          <div class="desc">${desc}</div>
+          ${tiny ? `<div class="tiny">${tiny}</div>` : ''}
+        </article>
+      `;
     }
 
-    function hasFlag(flags,name){return Array.isArray(flags)&&flags.includes(name)}
-
-    function renderColdTrend(value,lineId,subId,missingFlagName,baseText,flags){
-      const line=document.getElementById(lineId);
-      const sub=document.getElementById(subId);
-      if(hasNumber(value)){line.innerText=fmtSigned(value," °C");sub.innerText=baseText;return}
-      if(hasFlag(flags,missingFlagName)){
-        line.innerText="mangler data";
-        sub.innerHTML=`<span class="mutedwarn">usikker: historiske temperaturdata mangler</span>`;
-        return;
-      }
-      line.innerText="mangler data";
-      sub.innerText=baseText;
+    function buildCompactMessage(data) {
+      const level = data?.output?.level || 'GRN';
+      const risk = fmt0(data?.scores?.risk);
+      const horizon = extractHorizon(data?.output?.message) || '12-24T';
+      const res = fmt0(data?.scores?.reservoir);
+      const trg = fmt0(data?.scores?.trigger);
+      const cpl = fmt0(data?.scores?.coupling);
+      const ice = fmt0(data?.inputs?.icePressure);
+      const sea = fmt0(data?.inputs?.seaPressure);
+      const gr = fmt1(data?.inputs?.gradient);
+      const sf6 = fmt1(data?.inputs?.sf6);
+      const vg = fmt0(data?.inputs?.ventilIndex);
+      const cg = fmt0(data?.inputs?.coastGate);
+      const ct24 = isNum(data?.inputs?.iceTempTrend24h) ? `${Math.round(data.inputs.iceTempTrend24h)}` : '?';
+      const ct72 = isNum(data?.inputs?.iceTempTrend72h) ? `${Math.round(data.inputs.iceTempTrend72h)}` : '?';
+      return `${level}${risk} ${horizon} RES${res} TRG${trg} CPL${cpl}\nICE${ice} SEA${sea} GR${gr} SF6${sf6}\nVG${vg} CG${cg} CT24${ct24} CT72${ct72}`;
     }
 
-    async function loadData(manual=false){
-      const btn=document.getElementById("refreshBtn");
-      const status=document.getElementById("refreshStatus");
-
-      try{
-        if(manual&&btn){
-          btn.disabled=true;
-          btn.innerText="Laster...";
-          status.innerText="Henter nyeste lagrede datafil...";
-        }
-
-        const r=await fetch("data.json?"+Date.now(),{cache:"no-store"});
-        if(!r.ok)throw new Error("HTTP "+r.status);
-
-        const d=await r.json();
-        const meta=d.meta||{};
-        const inputs=d.inputs||{};
-        const scores=d.scores||{};
-        const derived=d.derived||{};
-        const output=d.output||{};
-        const flags=derived.qualityFlags||[];
-
-        document.getElementById("metaLine").innerText =
-          `${meta.location || "-"} · oppdatert ${meta.updatedAt || "-"} UTC · modell ${meta.model || "-"}`;
-
-        renderTrendStatus(derived.trendDataStatus||"-");
-        renderQualityFlags(flags);
-        renderStaleInfo(meta);
-        renderHistoryInfo(derived.selectedTimes);
-
-        document.getElementById("riskLine").innerText = `${output.level||"-"} · ${fmtInt(scores.risk,"/100")}`;
-        setRiskBadge(output.level||"");
-        document.getElementById("phaseLine").innerText = output.phase || "-";
-        document.getElementById("watchLine").innerText = derived.watch ? "Watch ON" : "Watch OFF";
-        document.getElementById("ladningLine").innerHTML =
-          derived.isLadning ? `<span class="statusinfo">Reservoir ladet, men syklon ikke fullt koblet</span>` : "";
-        document.getElementById("mismatchLine").innerHTML =
-          derived.piteraqMismatch ? `<span class="mutedwarn">Mer synoptisk storm enn klassisk piteraq</span>` : "";
-
-        document.getElementById("messageBox").innerText = output.message || "-";
-
-        document.getElementById("reservoirLine").innerText = fmtInt(scores.reservoir,"/100");
-        document.getElementById("triggerLine").innerText = fmtInt(scores.trigger,"/100");
-        document.getElementById("couplingLine").innerText = fmtInt(scores.coupling,"/100");
-        document.getElementById("potentialLine").innerText = fmtInt(scores.potential,"/100");
-
-        document.getElementById("cycloneScoreLine").innerText = fmtInt(derived.cycloneScore,"/100");
-        document.getElementById("cycloneZoneLine").innerText =
-          derived.cycloneInTriggerZone ? "Syklon i trigger-sone" : "Syklon utenfor trigger-sone";
-
-        document.getElementById("icePressureLine").innerText = fmt(inputs.icePressure," hPa");
-        document.getElementById("icePressureSub").innerText =
-          `vs normal ${fmtSigned(derived.icePressureAnomNow," hPa")}`;
-
-        document.getElementById("seaPressureLine").innerText = fmt(inputs.seaPressure," hPa");
-        document.getElementById("sectorLine").innerText = `sektor ${derived.sector || "?"}`;
-
-        document.getElementById("gradientLine").innerText = fmt(inputs.gradient," hPa");
-        document.getElementById("gradientSub").innerText =
-          `d6 ${fmtSigned(inputs.d6," hPa")} · SF6 ${fmt(inputs.sf6," hPa")}`;
-
-        document.getElementById("d6Line").innerText = fmtSigned(inputs.d6," hPa");
-        document.getElementById("d12Line").innerText = fmtSigned(inputs.d12," hPa");
-
-        document.getElementById("seaDelta6Line").innerText = fmtSigned(inputs.seaPressureDelta6h," hPa");
-        document.getElementById("seaDelta12Line").innerText = fmtSigned(inputs.seaPressureDelta12h," hPa");
-
-        document.getElementById("sf6Line").innerText = fmt(inputs.sf6," hPa");
-        document.getElementById("sf12Line").innerText = fmt(inputs.sf12," hPa");
-        document.getElementById("pressureFallAccLine").innerText = fmtSigned(inputs.pressureFallAcceleration," hPa");
-
-        const accSuffix = derived.accUncertain ? "?" : "";
-        const accG = hasNumber(derived.accG) ? Number(derived.accG).toFixed(1) : "mangler data";
-        const accS = hasNumber(derived.accS) ? Number(derived.accS).toFixed(1) : "mangler data";
-        document.getElementById("accLine").innerText =
-          `AG ${accG}${accSuffix} · AS ${accS}${accSuffix}`;
-
-        document.getElementById("ventilLine").innerText = fmt(inputs.ventilIndex," hPa");
-        document.getElementById("ventilD6Line").innerText = fmtSigned(inputs.ventilD6," hPa");
-        document.getElementById("ventilD12Line").innerText = fmtSigned(inputs.ventilD12," hPa");
-
-        document.getElementById("coastSeaPressureLine").innerText = fmt(inputs.coastSeaPressure," hPa");
-        document.getElementById("coastGateLine").innerText = fmt(inputs.coastGate," hPa");
-        document.getElementById("coastGateD6Line").innerText = fmtSigned(inputs.coastGateD6," hPa");
-        document.getElementById("coastGateD12Line").innerText = fmtSigned(inputs.coastGateD12," hPa");
-
-        document.getElementById("iceWindLine").innerText = fmt(inputs.iceWind," m/s");
-        document.getElementById("iceWindSub").innerText =
-          `trend 6t ${fmtSigned(inputs.iceWindTrend6h," m/s")}`;
-
-        document.getElementById("dtLine").innerText = fmt(inputs.coastIceDeltaT," °C");
-        document.getElementById("katabaticLine").innerText = fmtInt(derived.katabaticPotential,"/100");
-
-        const cold72Text = hasNumber(derived.coldSupport72h)
-          ? `cold72 ${fmt(derived.coldSupport72h," °C")}`
-          : "cold72 mangler data";
-        document.getElementById("katabaticSub").innerText = cold72Text;
-
-        renderColdTrend(inputs.iceTempTrend24h,"iceTempTrend24hLine","iceTempTrend24hSub","missing_ice_temp_trend_24h","negativ verdi = kaldere is siste 24 timer",flags);
-        renderColdTrend(inputs.iceTempTrend72h,"iceTempTrend72hLine","iceTempTrend72hSub","missing_ice_temp_trend_72h","negativ verdi = kaldere is siste 72 timer",flags);
-
-        if(manual){
-          status.innerText = `Lastet: ${meta.updatedAt || "-"}`;
-        }
-      }catch(err){
-        document.getElementById("metaLine").innerText = "Kunne ikke laste data.json";
-        document.getElementById("trendStatusLine").innerHTML = `<span class="statuserror">${String(err)}</span>`;
-        document.getElementById("qualityFlagsLine").innerHTML = "";
-        document.getElementById("staleBox").innerHTML = "";
-        document.getElementById("historyLine").innerHTML = "";
-        if(status) status.innerText = "Feil ved lasting av data.";
-      }finally{
-        if(manual&&btn){
-          btn.disabled = false;
-          btn.innerText = "Last inn nyeste lagrede varsel";
-        }
-      }
+    function extractHorizon(message) {
+      if (!message) return null;
+      const m = String(message).match(/\b(0-6T|6-12T|12-24T)\b/);
+      return m ? m[1] : null;
     }
 
-    loadData(false);
-  </script>
-</body>
-  </html>
+    function render(data) {
+      const meta = data.meta || {};
+      const scores = data.scores || {};
+      const inputs = data.inputs || {};
+      const derived = data.derived || {};
+      const output = data.output || {};
+
+      document.getElementById('hero-location').textContent = `${meta.location || 'Ukjent sted'} · ${meta.updatedAt || 'ukjent tid'}`;
+      document.getElementById('hero-updated').textContent = `UTC · ${meta.updatedAt || '–'}`;
+      document.getElementById('hero-model').textContent = `modell ${meta.model || '–'}`;
+
+      const trendEl = document.getElementById('trend-status');
+      trendEl.textContent = `Trendstatus: ${derived.trendDataStatus || '–'}`;
+      trendEl.className = statusClass(derived.trendDataStatus || '');
+
+      const qFlags = Array.isArray(derived.qualityFlags) ? derived.qualityFlags : [];
+      const qualityText = qFlags.length ? qFlags.join(', ') : 'OK';
+      const qualityEl = document.getElementById('quality-status');
+      qualityEl.textContent = `Datakvalitet: ${qualityText}`;
+      qualityEl.className = qFlags.length ? 'status-warn' : 'status-ok';
+
+      document.getElementById('last-success').textContent = `Sist vellykket oppdatert: ${meta.lastSuccessfulUpdate || meta.updatedAt || '–'}`;
+
+      const sel = derived.selectedTimes || {};
+      document.getElementById('trend-refs').textContent = `Trendreferanser: now: ${sel.now?.validTime || '–'} · 6t: ${sel.h6_from_history || '–'} · 12t: ${sel.h12_from_history || '–'} · 24t: ${sel.h24_from_history || '–'} · 72t: ${sel.h72_from_history || '–'}`;
+
+      document.getElementById('last-loaded').textContent = `Lastet: ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC`;
+
+      const level = output.level || 'GRN';
+      document.getElementById('risk-main').textContent = `${level} · ${fmt0(scores.risk)}/100`;
+      const chip = document.getElementById('risk-chip');
+      chip.textContent = level;
+      chip.className = `chip ${chipClass(level)}`;
+      document.getElementById('risk-phase').textContent = output.phase || '–';
+      document.getElementById('risk-watch').textContent = `Watch ${derived.watch ? 'ON' : 'OFF'}`;
+
+      const compactMsg = buildCompactMessage(data);
+      const rawMsg = output.message || compactMsg;
+      document.getElementById('msg-box').textContent = compactMsg.length <= 160 ? compactMsg : rawMsg;
+      document.getElementById('copy-btn').onclick = async () => {
+        const text = document.getElementById('msg-box').textContent;
+        try { await navigator.clipboard.writeText(text); } catch {}
+      };
+
+      document.getElementById('score-grid').innerHTML = [
+        metricCard({ label: 'Reservoir', value: `${fmt0(scores.reservoir)}/100`, desc: 'oppdemming over is' }),
+        metricCard({ label: 'Trigger', value: `${fmt0(scores.trigger)}/100`, desc: 'gradient + trend + strait-fall + akselerasjon + gate' }),
+        metricCard({ label: 'Coupling', value: `${fmt0(scores.coupling)}/100`, desc: 'syklonsone + sektor + havlav + ventil + kystgate' }),
+        metricCard({ label: 'Potential', value: `${fmt0(scores.potential)}/100`, desc: 'nærhet til kritisk piteraq-oppsett', tiny: isNum(derived.potentialRaw) ? `rått potential ${fmt0(derived.potentialRaw)} · reservoirfaktor ${fmt1(derived.potentialReservoirFactor)}` : '' }),
+        metricCard({ label: 'Syklonposisjon', value: `${fmt0(derived.cycloneScore)}/100`, desc: derived.cycloneInTriggerZone ? 'innenfor gunstig sone' : 'utenfor gunstig sone' }),
+        metricCard({ label: 'Katabatisk potential', value: `${fmt0(derived.katabaticPotential)}/100`, desc: `cold72 ${fmt1(derived.coldSupport72h)} °C` }),
+      ].join('');
+
+      document.getElementById('primary-grid').innerHTML = [
+        metricCard({ label: 'Ice pressure', value: `${fmt1(inputs.icePressure)} hPa`, desc: `vs normal ${descSigned(derived.icePressureAnomNow, ' hPa')}` }),
+        metricCard({ label: 'Sea pressure', value: `${fmt1(inputs.seaPressure)} hPa`, desc: `sektor ${derived.seaCentroidSector || derived.seaMinSector || derived.sector || '–'}` }),
+        metricCard({ label: 'Gradient', value: `${fmt1(inputs.gradient)} hPa`, desc: `d6 ${descSigned(inputs.d6, ' hPa')} · SF6 ${fmt1(inputs.sf6)} hPa` }),
+        metricCard({ label: 'Ventilindeks', value: `${fmt1(inputs.ventilIndex)} hPa`, desc: 'synoptisk åpning i Danmarkstredet' }),
+        metricCard({ label: 'Kystgate', value: `${fmt1(inputs.coastGate)} hPa`, desc: 'ice pressure minus kystnært sjøtrykk' }),
+        metricCard({ label: 'Ice wind', value: `${fmt1(inputs.iceWind)} m/s`, desc: `trend 6t ${descSigned(inputs.iceWindTrend6h, ' m/s')}` }),
+      ].join('');
+
+      document.getElementById('trend-grid').innerHTML = [
+        metricCard({ label: 'd6', value: `${descSigned(inputs.d6)} hPa`, desc: 'gradientendring siste 6 timer' }),
+        metricCard({ label: 'd12', value: `${descSigned(inputs.d12)} hPa`, desc: 'gradientendring siste 12 timer' }),
+        metricCard({ label: 'Strait ΔP 6t', value: `${descSigned(inputs.seaPressureDelta6h)} hPa`, desc: 'rå trykkendring i strait', tiny: 'minus = trykkfall · pluss = trykkstigning' }),
+        metricCard({ label: 'Strait ΔP 12t', value: `${descSigned(inputs.seaPressureDelta12h)} hPa`, desc: 'rå trykkendring i strait', tiny: 'minus = trykkfall · pluss = trykkstigning' }),
+        metricCard({ label: 'SF6', value: `${fmt1(inputs.sf6)} hPa`, desc: 'fallstyrke i strait siste 6 timer' }),
+        metricCard({ label: 'SF12', value: `${fmt1(inputs.sf12)} hPa`, desc: 'fallstyrke i strait siste 12 timer' }),
+        metricCard({ label: 'Fallstyrke-endring', value: `${descSigned(inputs.pressureFallAcceleration)} hPa`, desc: 'endring i fallstyrke', tiny: 'pluss = fallet tiltar · minus = fallet svekkes' }),
+        metricCard({ label: 'Akselerasjon', value: `AG ${fmt1(derived.accG)} · AS ${fmt1(derived.accS)}`, desc: 'AG = gradient · AS = strait-fall' }),
+        metricCard({ label: 'Ventil d6', value: `${descSigned(inputs.ventilD6)} hPa`, desc: 'endring i ventil siste 6 timer' }),
+        metricCard({ label: 'Ventil d12', value: `${descSigned(inputs.ventilD12)} hPa`, desc: 'endring i ventil siste 12 timer' }),
+        metricCard({ label: 'Kystgate d6', value: `${descSigned(inputs.coastGateD6)} hPa`, desc: 'endring i kystgate siste 6 timer' }),
+        metricCard({ label: 'Kystgate d12', value: `${descSigned(inputs.coastGateD12)} hPa`, desc: 'endring i kystgate siste 12 timer' }),
+      ].join('');
+
+      document.getElementById('diag-grid').innerHTML = [
+        metricCard({ label: 'Coast-ice ΔT', value: `${fmt1(inputs.coastIceDeltaT)} °C`, desc: 'temperaturforskjell kyst minus is' }),
+        metricCard({ label: 'Kulde 24t', value: `${descSigned(inputs.iceTempTrend24h)} °C`, desc: 'minus = kaldere is siste 24 timer' }),
+        metricCard({ label: 'Kulde 72t', value: `${descSigned(inputs.iceTempTrend72h)} °C`, desc: 'minus = kaldere is siste 72 timer' }),
+        metricCard({ label: 'Kystnært sjøtrykk', value: `${fmt1(inputs.coastSeaPressure)} hPa`, desc: 'snitt av K1 og K2' }),
+        metricCard({ label: 'Sea spread', value: `${fmt1(derived.seaMinCentroidSpread)} hPa`, desc: 'spredning mellom minimum og centroid' }),
+        metricCard({ label: 'Sea motion 6t', value: isNum(derived.seaMinMotionKm6) ? `${fmt1(derived.seaMinMotionKm6)} km` : 'mangler data', desc: 'bevegelse i sjøminimum siste 6 timer' }),
+      ].join('');
+
+      document.getElementById('footer-note').innerHTML = `
+        <div>${meta.stale ? '<span class="danger">Stale data:</span>' : ''} ${meta.forecastInfo || ''}</div>
+        <div class="pill-row">
+          <span class="pill">instans ${meta.instanceId || '–'}</span>
+          <span class="pill">trend ${derived.trendDataStatus || '–'}</span>
+          <span class="pill">ice punkter ${derived.usedIcePressurePoints ?? '–'}</span>
+          <span class="pill">sea punkter ${derived.usedSeaPressurePoints ?? '–'}</span>
+        </div>
+      `;
+    }
+
+    async function loadData() {
+      const url = `data.json?ts=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      render(data);
+    }
+
+    document.getElementById('reload-btn').addEventListener('click', () => {
+      loadData().catch(err => {
+        alert(`Kunne ikke laste data.json: ${err.message}`);
+      });
+    });
+
+    loadData().catch(err => {
+      document.getElementById('msg-box').textContent = `Kunne ikke laste data.json\n${err.message}`;
+    });
+  </script></body>
+</html>
