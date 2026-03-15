@@ -29,7 +29,7 @@ jobs:
         run: python scripts/update_data.py
 
       - name: Commit updated files
-        run: |git add data.json history.json summary.json
+        run: git add data.json history.json summary.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
