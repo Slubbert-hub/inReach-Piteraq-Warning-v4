@@ -29,9 +29,9 @@ jobs:
         run: python scripts/update_data.py
 
       - name: Commit updated files
-        run: |
+        run: |git add data.json history.json summary.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.json history.json
+          
           git diff --cached --quiet || git commit -m "Update piteraq data"
           git push
