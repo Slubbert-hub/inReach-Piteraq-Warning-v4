@@ -1,4 +1,5 @@
-<!DOCTYPE html><html lang="no">
+<!DOCTYPE html>
+<html lang="no">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,249 +20,250 @@
       --border: rgba(255,255,255,0.06);
       --shadow: 0 10px 28px rgba(0,0,0,0.22);
       --radius: 20px;
-    }* { box-sizing: border-box; }
-html, body {
-  margin: 0;
-  padding: 0;
-  background: linear-gradient(180deg, #06101f 0%, #071a33 100%);
-  color: var(--text);
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-}
+    }
 
-body { min-height: 100vh; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(180deg, #06101f 0%, #071a33 100%);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
 
-.app {
-  width: min(100%, 760px);
-  margin: 0 auto;
-  padding: 12px 12px 28px;
-  display: grid;
-  gap: 12px;
-}
+    body { min-height: 100vh; }
 
-.card {
-  background: var(--panel);
-  border-radius: var(--radius);
-  padding: 16px;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-}
+    .app {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: 12px 12px 28px;
+      display: grid;
+      gap: 12px;
+    }
 
-.hero h1 {
-  margin: 0 0 8px;
-  font-size: clamp(2.3rem, 7vw, 4rem);
-  line-height: 0.95;
-  letter-spacing: -0.04em;
-}
+    .card {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
 
-.sub {
-  color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1.35;
-  display: grid;
-  gap: 2px;
-}
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2.3rem, 7vw, 4rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
 
-.risk-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.35;
+      display: grid;
+      gap: 2px;
+    }
 
-.risk-main {
-  font-size: clamp(2.2rem, 8vw, 3.5rem);
-  font-weight: 900;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
-}
+    .risk-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 92px;
-  min-height: 56px;
-  border-radius: 18px;
-  padding: 4px 16px;
-  font-size: 1.45rem;
-  font-weight: 900;
-  color: var(--chip-text);
-}
+    .risk-main {
+      font-size: clamp(2.2rem, 8vw, 3.5rem);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
 
-.chip.GRN { background: var(--green); }
-.chip.YEL { background: var(--yellow); }
-.chip.ORG { background: var(--orange); }
-.chip.RED { background: var(--red); }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 92px;
+      min-height: 56px;
+      border-radius: 18px;
+      padding: 4px 16px;
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: var(--chip-text);
+    }
 
-.phase {
-  margin-top: 10px;
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1.25;
-}
+    .chip.GRN { background: var(--green); }
+    .chip.YEL { background: var(--yellow); }
+    .chip.ORG { background: var(--orange); }
+    .chip.RED { background: var(--red); }
 
-.watch {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.94rem;
-  font-weight: 700;
-}
+    .phase {
+      margin-top: 10px;
+      font-size: 1rem;
+      font-weight: 800;
+      line-height: 1.25;
+    }
 
-.msg-box {
-  margin-top: 12px;
-  background: #08111f;
-  border-radius: 18px;
-  padding: 14px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.96rem;
-  line-height: 1.18;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
+    .watch {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      font-weight: 700;
+    }
 
-.btn-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
+    .msg-box {
+      margin-top: 12px;
+      background: #08111f;
+      border-radius: 18px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.96rem;
+      line-height: 1.18;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
 
-.btn {
-  appearance: none;
-  border: 0;
-  border-radius: 16px;
-  padding: 14px 18px;
-  font-size: 1rem;
-  font-weight: 800;
-  color: white;
-  cursor: pointer;
-}
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
 
-.btn.primary { background: #18b64b; flex: 1 1 200px; }
-.btn.secondary { background: var(--blue); flex: 0 0 auto; }
-.btn.ghost { background: rgba(255,255,255,0.08); flex: 1 1 180px; }
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 18px;
+      font-size: 1rem;
+      font-weight: 800;
+      color: white;
+      cursor: pointer;
+    }
 
-.status {
-  margin-top: 12px;
-  display: grid;
-  gap: 6px;
-  font-size: 0.92rem;
-  font-weight: 700;
-}
+    .btn.primary { background: #18b64b; flex: 1 1 200px; }
+    .btn.secondary { background: var(--blue); flex: 0 0 auto; }
+    .btn.ghost { background: rgba(255,255,255,0.08); flex: 1 1 180px; }
 
-.ok { color: #79f3a6; }
-.warn { color: var(--yellow); }
-.err { color: #ff9c9c; }
-.muted { color: var(--muted); }
+    .status {
+      margin-top: 12px;
+      display: grid;
+      gap: 6px;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
 
-.stamp {
-  margin-top: 10px;
-  background: rgba(0,0,0,0.18);
-  border-radius: 14px;
-  padding: 11px 12px;
-  font-size: 0.92rem;
-  line-height: 1.35;
-}
+    .ok { color: #79f3a6; }
+    .warn { color: var(--yellow); }
+    .err { color: #ff9c9c; }
+    .muted { color: var(--muted); }
 
-.section-title {
-  margin: 0 0 10px;
-  font-size: 1rem;
-  font-weight: 800;
-}
+    .stamp {
+      margin-top: 10px;
+      background: rgba(0,0,0,0.18);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
 
-.compact-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      font-weight: 800;
+    }
 
-@media (min-width: 700px) {
-  .compact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+    .compact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
 
-.metric {
-  background: var(--panel-2);
-  border-radius: 16px;
-  padding: 12px 12px 11px;
-  min-width: 0;
-}
+    @media (min-width: 700px) {
+      .compact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
 
-.metric .label {
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.2;
-  margin-bottom: 7px;
-}
+    .metric {
+      background: var(--panel-2);
+      border-radius: 16px;
+      padding: 12px 12px 11px;
+      min-width: 0;
+    }
 
-.metric .value {
-  font-size: 1.9rem;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 0.95;
-  margin-bottom: 5px;
-}
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.2;
+      margin-bottom: 7px;
+    }
 
-.metric .desc {
-  font-size: 0.9rem;
-  line-height: 1.28;
-  color: #dde5f2;
-}
+    .metric .value {
+      font-size: 1.9rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin-bottom: 5px;
+    }
 
-.metric .tiny {
-  margin-top: 4px;
-  font-size: 0.8rem;
-  line-height: 1.24;
-  color: var(--muted);
-}
+    .metric .desc {
+      font-size: 0.9rem;
+      line-height: 1.28;
+      color: #dde5f2;
+    }
 
-details {
-  background: var(--panel);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
+    .metric .tiny {
+      margin-top: 4px;
+      font-size: 0.8rem;
+      line-height: 1.24;
+      color: var(--muted);
+    }
 
-summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 15px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-weight: 800;
-}
+    details {
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
 
-summary::-webkit-details-marker { display: none; }
+    summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 15px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+    }
 
-.summary-sub {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 0.84rem;
-  font-weight: 600;
-}
+    summary::-webkit-details-marker { display: none; }
 
-.details-body { padding: 0 10px 10px; }
+    .summary-sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
 
-.pill-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
+    .details-body { padding: 0 10px 10px; }
 
-.pill {
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: rgba(255,255,255,0.08);
-  color: var(--text);
-  font-size: 0.82rem;
-  line-height: 1.2;
-  font-weight: 700;
-}
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
 
+    .pill {
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      font-size: 0.82rem;
+      line-height: 1.2;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -272,81 +274,84 @@ summary::-webkit-details-marker { display: none; }
         <div id="hero-location">TASIILAQ</div>
         <div id="hero-updated">Oppdatert –</div>
         <div id="hero-model">Modell –</div>
-      </div><div class="risk-row">
-    <div id="risk-main" class="risk-main">—</div>
-    <div id="risk-chip" class="chip GRN">GRN</div>
-  </div>
-  <div id="risk-phase" class="phase">—</div>
-  <div id="risk-watch" class="watch">Watch —</div>
-
-  <div id="msg-box" class="msg-box">Laster …</div>
-
-  <div class="btn-row">
-    <button id="copy-btn" class="btn secondary">Kopier</button>
-    <button id="details-btn" class="btn primary">Vis detaljer</button>
-    <button id="reload-btn" class="btn ghost">Oppdater sammendrag</button>
-  </div>
-
-  <div class="status">
-    <div id="trend-status" class="ok">Trendstatus: –</div>
-    <div id="quality-status" class="warn">Datakvalitet: –</div>
-  </div>
-
-  <div id="last-success" class="stamp">Sist vellykket oppdatert: –</div>
-  <div id="trend-refs" class="stamp muted" style="display:none;">Trendreferanser: –</div>
-</section>
-
-<section id="details-wrap" style="display:none; gap:12px;">
-  <section class="card">
-    <h2 class="section-title">Kjerneverdier</h2>
-    <div class="compact-grid" id="score-grid"></div>
-  </section>
-
-  <details open>
-    <summary>
-      <div>
-        <div>Nåverdi og triggere</div>
-        <div class="summary-sub">Mest relevante drivere akkurat nå</div>
       </div>
-      <div>›</div>
-    </summary>
-    <div class="details-body">
-      <div class="compact-grid" id="primary-grid"></div>
-    </div>
-  </details>
 
-  <details>
-    <summary>
-      <div>
-        <div>Trender og endringer</div>
-        <div class="summary-sub">Retning og tempo</div>
+      <div class="risk-row">
+        <div id="risk-main" class="risk-main">—</div>
+        <div id="risk-chip" class="chip GRN">GRN</div>
       </div>
-      <div>›</div>
-    </summary>
-    <div class="details-body">
-      <div class="compact-grid" id="trend-grid"></div>
-    </div>
-  </details>
+      <div id="risk-phase" class="phase">—</div>
+      <div id="risk-watch" class="watch">Watch —</div>
 
-  <details>
-    <summary>
-      <div>
-        <div>Diagnostikk</div>
-        <div class="summary-sub">Reservoar, katabatikk og sone</div>
+      <div id="msg-box" class="msg-box">Laster …</div>
+
+      <div class="btn-row">
+        <button id="copy-btn" class="btn secondary">Kopier</button>
+        <button id="details-btn" class="btn primary">Vis detaljer</button>
+        <button id="reload-btn" class="btn ghost">Oppdater sammendrag</button>
       </div>
-      <div>›</div>
-    </summary>
-    <div class="details-body">
-      <div class="compact-grid" id="diag-grid"></div>
-    </div>
-  </details>
 
-  <section class="card">
-    <div id="footer-note" class="muted"></div>
-  </section>
-</section>
+      <div class="status">
+        <div id="trend-status" class="ok">Trendstatus: –</div>
+        <div id="quality-status" class="warn">Datakvalitet: –</div>
+      </div>
 
-  </main>  <script>
+      <div id="last-success" class="stamp">Sist vellykket oppdatert: –</div>
+      <div id="trend-refs" class="stamp muted" style="display:none;">Trendreferanser: –</div>
+    </section>
+
+    <section id="details-wrap" style="display:none; gap:12px;">
+      <section class="card">
+        <h2 class="section-title">Kjerneverdier</h2>
+        <div class="compact-grid" id="score-grid"></div>
+      </section>
+
+      <details open>
+        <summary>
+          <div>
+            <div>Nåverdi og triggere</div>
+            <div class="summary-sub">Mest relevante drivere akkurat nå</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="primary-grid"></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <div>
+            <div>Trender og endringer</div>
+            <div class="summary-sub">Retning og tempo</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="trend-grid"></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <div>
+            <div>Diagnostikk</div>
+            <div class="summary-sub">Reservoar, katabatikk og LP-vektor</div>
+          </div>
+          <div>›</div>
+        </summary>
+        <div class="details-body">
+          <div class="compact-grid" id="diag-grid"></div>
+        </div>
+      </details>
+
+      <section class="card">
+        <div id="footer-note" class="muted"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
     const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
     const fmt1 = (v) => isNum(v) ? Number(v).toFixed(1) : 'mangler data';
     const fmt0 = (v) => isNum(v) ? String(Math.round(v)) : 'mangler data';
@@ -393,7 +398,9 @@ summary::-webkit-details-marker { display: none; }
       const gr = fmt1(data?.inputs?.gradient ?? data?.gradient);
       const sf6 = fmt1(data?.inputs?.sf6 ?? data?.sf6);
       const ag = isNum(data?.derived?.accG ?? data?.accG) ? ` AG${Math.round(data.derived?.accG ?? data.accG)}` : '';
-      return `${level}${risk} ${horizon} RES${res} TRG${trg} CPL${cpl}\nICE${ice} SEA${sea} GR${gr} SF6${sf6}${ag}`;
+      const lpb = isNum(data?.derived?.lpBearingFromSea ?? data?.lpBearing) ? ` LPB${Math.round(data.derived?.lpBearingFromSea ?? data.lpBearing)}` : '';
+      const lpv = isNum(data?.derived?.lpBearingTrend6h ?? data?.lpBearingTrend6h) ? ` LPV${Math.round(data.derived?.lpBearingTrend6h ?? data.lpBearingTrend6h)}` : '';
+      return `${level}${risk} ${horizon} RES${res} TRG${trg} CPL${cpl}\nICE${ice} SEA${sea} GR${gr} SF6${sf6}${ag}${lpb}${lpv}`;
     }
 
     function setHeader(data) {
@@ -441,17 +448,17 @@ summary::-webkit-details-marker { display: none; }
       document.getElementById('score-grid').innerHTML = [
         metricCard({ label: 'Reservoir', value: `${fmt0(scores.reservoir)}/100`, desc: 'oppdemming over is' }),
         metricCard({ label: 'Trigger', value: `${fmt0(scores.trigger)}/100`, desc: 'gradient + trend + strait-fall + akselerasjon + gate' }),
-        metricCard({ label: 'Coupling', value: `${fmt0(scores.coupling)}/100`, desc: 'syklonsone + sektor + havlav + ventil + kystgate' }),
+        metricCard({ label: 'Coupling', value: `${fmt0(scores.coupling)}/100`, desc: 'sone + LP-vektor + havlav + ventil + kystgate' }),
         metricCard({ label: 'Potential', value: `${fmt0(scores.potential)}/100`, desc: 'piteraq-nærhet', tiny: isNum(derived.potentialRaw) ? `rått ${fmt0(derived.potentialRaw)} · reservoirfaktor ${fmt1(derived.potentialReservoirFactor)}` : '' }),
         metricCard({ label: 'Syklonposisjon', value: `${fmt0(derived.cycloneScore)}/100`, desc: derived.cycloneInTriggerZone ? 'innenfor gunstig sone' : 'utenfor gunstig sone' }),
-        metricCard({ label: 'Katabatisk potential', value: `${fmt0(derived.katabaticPotential)}/100`, desc: `cold72 ${fmt1(derived.coldSupport72h)} °C` }),
+        metricCard({ label: 'LP-sektorscore', value: `${fmt0(derived.lpSectorScore)}/100`, desc: `${derived.lpAlignmentLabel || 'unknown'} · ${derived.lpApproachingFavoredSector ? 'på vei inn' : 'ingen inntrend'}` }),
       ].join('');
 
       document.getElementById('primary-grid').innerHTML = [
         metricCard({ label: 'Ice pressure', value: `${fmt1(inputs.icePressure)} hPa`, desc: `vs normal ${descSigned(derived.icePressureAnomNow, ' hPa')}` }),
         metricCard({ label: 'Sea pressure', value: `${fmt1(inputs.seaPressure)} hPa`, desc: `sektor ${derived.seaCentroidSector || derived.sector || '–'}` }),
         metricCard({ label: 'Gradient', value: `${fmt1(inputs.gradient)} hPa`, desc: `d6 ${descSigned(inputs.d6, ' hPa')}` }),
-        metricCard({ label: 'Gradient-acc', value: `${fmt1(derived.accG)}`, desc: 'pluss = gradient øker raskere', tiny: 'AG i inReach når plass' }),
+        metricCard({ label: 'Gradient-acc', value: `${fmt1(derived.accG)}`, desc: 'pluss = gradient øker raskere' }),
         metricCard({ label: 'Ventilindeks', value: `${fmt1(inputs.ventilIndex)} hPa`, desc: 'synoptisk åpning i Danmarkstredet' }),
         metricCard({ label: 'Kystgate', value: `${fmt1(inputs.coastGate)} hPa`, desc: 'ice pressure minus kystnært sjøtrykk' }),
       ].join('');
@@ -475,9 +482,9 @@ summary::-webkit-details-marker { display: none; }
         metricCard({ label: 'Coast-ice ΔT', value: `${fmt1(inputs.coastIceDeltaT)} °C`, desc: 'temperaturforskjell kyst minus is' }),
         metricCard({ label: 'Kulde 24t', value: `${descSigned(inputs.iceTempTrend24h)} °C`, desc: 'minus = kaldere is siste 24 timer' }),
         metricCard({ label: 'Kulde 72t', value: `${descSigned(inputs.iceTempTrend72h)} °C`, desc: 'minus = kaldere is siste 72 timer' }),
-        metricCard({ label: 'Kystnært sjøtrykk', value: `${fmt1(inputs.coastSeaPressure)} hPa`, desc: 'snitt av K1 og K2' }),
-        metricCard({ label: 'Sea spread', value: `${fmt1(derived.seaMinCentroidSpread)} hPa`, desc: 'spredning mellom minimum og centroid' }),
-        metricCard({ label: 'Sea motion 6t', value: isNum(derived.seaMinMotionKm6) ? `${fmt1(derived.seaMinMotionKm6)} km` : 'mangler data', desc: 'bevegelse i sjøminimum siste 6 timer' }),
+        metricCard({ label: 'LP bearing', value: `${fmt1(derived.lpBearingFromSea)}°`, desc: 'SEA → LP', tiny: 'favorittfelt = 300–60°' }),
+        metricCard({ label: 'LP bearing trend', value: `${descSigned(derived.lpBearingTrend6h)}°`, desc: 'pluss = nærmere nord / favorittfelt' }),
+        metricCard({ label: 'LP offset', value: `${fmt1(derived.lpOffsetHpa)} hPa`, desc: `LP-avstand ${fmt1(derived.lpDistanceKm)} km` }),
       ].join('');
 
       document.getElementById('footer-note').innerHTML = `
@@ -534,5 +541,6 @@ summary::-webkit-details-marker { display: none; }
     loadSummary().catch(err => {
       document.getElementById('msg-box').textContent = `Kunne ikke laste summary.json/data.json\n${err.message}`;
     });
-  </script></body>
+  </script>
+</body>
 </html>
