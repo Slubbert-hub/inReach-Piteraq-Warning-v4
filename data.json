@@ -1,14 +1,14 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-03-19 11:09 UTC",
+    "updatedAt": "2026-03-19 14:48 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
+    "forecastInfo": "Latest update failed: RuntimeError",
     "instanceId": "2026-03-19T060000Z",
     "lastSuccessfulUpdate": "2026-03-19 11:09 UTC",
-    "lastAttemptFailed": null,
-    "stale": false
+    "lastAttemptFailed": "RuntimeError",
+    "stale": true
   },
   "inputs": {
     "icePressure": 980.3,
@@ -96,8 +96,10 @@
     "lpOffsetHpa": -1.2,
     "lpDistanceKm": 38.9,
     "accUncertain": false,
-    "trendDataStatus": "ok",
-    "qualityFlags": [],
+    "trendDataStatus": "stale: RuntimeError",
+    "qualityFlags": [
+      "stale_due_to_failed_update"
+    ],
     "selectedTimes": {
       "now": {
         "validTime": "2026-03-19T11:00:00.000Z",
@@ -116,7 +118,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "PITERAQ LOW",
+    "phase": "STALE (PITERAQ LOW)",
     "message": "GRN18 12-24T RES0 TRG36 CPL52 ICE980 SEA978 GR2.5 AG16 SF64.4 LPB157 LPV-12 LPS20 VG1 CG8 CT24+0"
   }
 }
