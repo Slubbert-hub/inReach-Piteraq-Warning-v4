@@ -1,37 +1,5 @@
 [
   {
-    "t": "2026-03-12T19:00:00Z",
-    "icePressure": 990.3,
-    "iceTempC": -31.5,
-    "seaPressure": 975.0,
-    "gradient": 15.3,
-    "iceWind": 11.1,
-    "ventilIndex": 3.1,
-    "coastGate": 11.3,
-    "seaMinLon": -27.5,
-    "seaMinLat": 66.4,
-    "icePressureAnomNow": -23.0,
-    "coldSupportNow": 31.5,
-    "dTCoastIceNow": 31.6,
-    "sector": "E2"
-  },
-  {
-    "t": "2026-03-12T20:00:00Z",
-    "icePressure": 990.9,
-    "iceTempC": -32.3,
-    "seaPressure": 975.4,
-    "gradient": 15.5,
-    "iceWind": 10.9,
-    "ventilIndex": 3.1,
-    "coastGate": 12.0,
-    "seaMinLon": -27.5,
-    "seaMinLat": 66.4,
-    "icePressureAnomNow": -22.3,
-    "coldSupportNow": 32.3,
-    "dTCoastIceNow": 31.5,
-    "sector": "E2"
-  },
-  {
     "t": "2026-03-12T22:00:00Z",
     "icePressure": 989.7,
     "iceTempC": -34.4,
@@ -2681,6 +2649,25 @@
     "sector": "M1"
   },
   {
+    "t": "2026-03-24T14:00:00Z",
+    "icePressure": 1021.7,
+    "iceTempC": -45.7,
+    "seaPressure": 988.1,
+    "gradient": 33.6,
+    "iceWind": 7.5,
+    "ventilIndex": 5.4,
+    "coastGate": 14.6,
+    "seaMinLon": -30.1,
+    "seaMinLat": 63.9,
+    "seaCentroidPressure": 994.2,
+    "seaCentroidLon": -30.591,
+    "seaCentroidLat": 64.701,
+    "icePressureAnomNow": 8.5,
+    "coldSupportNow": 45.7,
+    "dTCoastIceNow": 43.4,
+    "sector": "M1"
+  },
+  {
     "t": "2026-03-24T16:00:00Z",
     "icePressure": 1024.4,
     "iceTempC": -44.1,
@@ -2697,6 +2684,25 @@
     "icePressureAnomNow": 11.2,
     "coldSupportNow": 44.1,
     "dTCoastIceNow": 41.5,
+    "sector": "M1"
+  },
+  {
+    "t": "2026-03-24T20:00:00Z",
+    "icePressure": 1026.6,
+    "iceTempC": -45.8,
+    "seaPressure": 1000.1,
+    "gradient": 26.5,
+    "iceWind": 7.9,
+    "ventilIndex": 4.2,
+    "coastGate": 15.0,
+    "seaMinLon": -30.1,
+    "seaMinLat": 63.9,
+    "seaCentroidPressure": 1004.6,
+    "seaCentroidLon": -30.443,
+    "seaCentroidLat": 64.825,
+    "icePressureAnomNow": 13.3,
+    "coldSupportNow": 45.8,
+    "dTCoastIceNow": 41.6,
     "sector": "M1"
   }
 ]
