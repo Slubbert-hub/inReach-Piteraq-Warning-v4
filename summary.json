@@ -1,21 +1,22 @@
 {
-  "updatedAt": "2026-04-04 11:55 UTC",
+  "updatedAt": "2026-04-04 14:10 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
   "instanceId": "2026-04-04T090000Z",
   "lastSuccessfulUpdate": "2026-04-04 11:55 UTC",
-  "forecastInfo": "Latest available forecast step",
-  "stale": false,
+  "forecastInfo": "Latest update failed: RuntimeError",
+  "stale": true,
   "level": "GRN",
-  "phase": "WATCH",
+  "phase": "STALE (WATCH)",
   "risk": 20,
   "watch": true,
   "message": "GRN20 12-24T RES40 TRG15 CPL65 ICE1010 SEA984 GR25.9 AG0 SF60.0 LPB40 LPV2 LPS70 VG-6 CG19 CT24-3",
-  "trendDataStatus": "ok",
+  "trendDataStatus": "stale: RuntimeError",
   "qualityFlags": [
     "cold_reservoir_building_24h",
     "lp_favored_alignment",
-    "sea_field_spread_moderate"
+    "sea_field_spread_moderate",
+    "stale_due_to_failed_update"
   ],
   "reservoir": 40,
   "trigger": 15,
