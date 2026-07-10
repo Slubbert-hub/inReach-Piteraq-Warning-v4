@@ -1,29 +1,29 @@
 {
-  "updatedAt": "2026-07-10 04:54 UTC",
+  "updatedAt": "2026-07-10 08:25 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
-  "instanceId": "2026-07-10T000000Z",
-  "lastSuccessfulUpdate": "2026-07-10 04:54 UTC",
+  "instanceId": "2026-07-10T030000Z",
+  "lastSuccessfulUpdate": "2026-07-10 08:25 UTC",
   "forecastInfo": "Latest available forecast step",
   "stale": false,
   "level": "GRN",
   "phase": "PITERAQ LOW",
-  "risk": 6,
+  "risk": 5,
   "watch": false,
-  "message": "GRN6 12-24T RES21 TRG2 CPL16 ICE1003 SEA1004 GR-0.6 AG-2 SF60.0 LPB227 LPV3 LPS20 VG0 CG3 CT24+3",
+  "message": "GRN5 12-24T RES20 TRG1 CPL16 ICE1004 SEA1004 GR-1.0 AG-1 SF60.0 LPB177 LPV-44 LPS20 VG0 CG3 CT24+1",
   "trendDataStatus": "ok",
   "qualityFlags": [
-    "lp_approaching_favored_sector"
+    "sea_min_motion_high"
   ],
-  "reservoir": 21,
-  "trigger": 2,
+  "reservoir": 20,
+  "trigger": 1,
   "coupling": 16,
-  "icePressure": 1002.9,
-  "seaPressure": 1003.5,
-  "gradient": -0.6,
+  "icePressure": 1003.5,
+  "seaPressure": 1004.5,
+  "gradient": -1.0,
   "sf6": 0.0,
-  "accG": -1.5,
-  "lpBearing": 226.6,
+  "accG": -1.0,
+  "lpBearing": 177.1,
   "lpSectorScore": 20,
-  "lpApproachingFavoredSector": true
+  "lpApproachingFavoredSector": false
 }
