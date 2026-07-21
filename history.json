@@ -1,24 +1,5 @@
 [
   {
-    "t": "2026-07-06T22:00:00Z",
-    "icePressure": 1011.7,
-    "iceTempC": -11.1,
-    "seaPressure": 999.2,
-    "gradient": 12.4,
-    "iceWind": 9.5,
-    "ventilIndex": -2.9,
-    "coastGate": 5.5,
-    "seaMinLon": -34.9,
-    "seaMinLat": 62.8,
-    "seaCentroidPressure": 1002.3,
-    "seaCentroidLon": -32.372,
-    "seaCentroidLat": 63.928,
-    "icePressureAnomNow": -1.6,
-    "coldSupportNow": 11.1,
-    "dTCoastIceNow": 18.6,
-    "sector": "W1"
-  },
-  {
     "t": "2026-07-07T00:00:00Z",
     "icePressure": 1010.0,
     "iceTempC": -13.7,
@@ -2734,5 +2715,24 @@
     "coldSupportNow": 7.3,
     "dTCoastIceNow": 15.6,
     "sector": "W3"
+  },
+  {
+    "t": "2026-07-21T12:00:00Z",
+    "icePressure": 1018.3,
+    "iceTempC": -1.9,
+    "seaPressure": 1021.5,
+    "gradient": -3.2,
+    "iceWind": 11.3,
+    "ventilIndex": 0.2,
+    "coastGate": -1.8,
+    "seaMinLon": -27.5,
+    "seaMinLat": 66.4,
+    "seaCentroidPressure": 1021.8,
+    "seaCentroidLon": -28.968,
+    "seaCentroidLat": 65.756,
+    "icePressureAnomNow": 5.0,
+    "coldSupportNow": 1.9,
+    "dTCoastIceNow": 9.8,
+    "sector": "E2"
   }
 ]
