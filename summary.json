@@ -1,17 +1,17 @@
 {
-  "updatedAt": "2026-08-07 17:01 UTC",
+  "updatedAt": "2026-08-07 19:06 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
   "instanceId": "2026-08-07T120000Z",
   "lastSuccessfulUpdate": "2026-08-07 17:01 UTC",
-  "forecastInfo": "Latest available forecast step",
-  "stale": false,
+  "forecastInfo": "Latest update failed: RuntimeError",
+  "stale": true,
   "level": "GRN",
-  "phase": "PITERAQ LOW",
+  "phase": "STALE (PITERAQ LOW)",
   "risk": 17,
   "watch": false,
   "message": "GRN17 12-24T RES58 TRG8 CPL30 ICE1020 SEA1006 GR13.6 AG-17 SF60.0 LPB346 LPV13 LPS91 VG? CG4 CT24+3",
-  "trendDataStatus": "ok",
+  "trendDataStatus": "stale: RuntimeError",
   "qualityFlags": [
     "lp_approaching_favored_sector",
     "lp_core_alignment",
@@ -21,7 +21,8 @@
     "missing_ice_wind_partial",
     "missing_sea_temperature_partial",
     "missing_ventil_index",
-    "partial_point_fetch_errors"
+    "partial_point_fetch_errors",
+    "stale_due_to_failed_update"
   ],
   "reservoir": 58,
   "trigger": 8,
