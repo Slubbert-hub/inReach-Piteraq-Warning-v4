@@ -1,7 +1,7 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-08-18 06:53 UTC",
+    "updatedAt": "2026-08-18 07:44 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest update failed: RuntimeError",
@@ -126,7 +126,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "STALE (STALE (STALE (STALE (PITERAQ LOW))))",
+    "phase": "STALE (STALE (STALE (STALE (STALE (PITERAQ LOW)))))",
     "message": "GRN17 12-24T RES63 TRG12 CPL11 ICE1020 SEA1012 GR7.4 AG3 SF60.0 LPB279 LPV24 LPS0 VG0 CG5 CT24+2"
   }
 }
