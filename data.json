@@ -1,14 +1,14 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-08-22 04:35 UTC",
+    "updatedAt": "2026-08-22 05:35 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
-    "forecastInfo": "Latest available forecast step",
+    "forecastInfo": "Latest update failed: RuntimeError",
     "instanceId": "2026-08-22T000000Z",
     "lastSuccessfulUpdate": "2026-08-22 04:35 UTC",
-    "lastAttemptFailed": null,
-    "stale": false
+    "lastAttemptFailed": "RuntimeError",
+    "stale": true
   },
   "inputs": {
     "icePressure": 1014.1,
@@ -109,7 +109,7 @@
     "lpOffsetHpa": -0.3,
     "lpDistanceKm": 55.1,
     "accUncertain": false,
-    "trendDataStatus": "ok",
+    "trendDataStatus": "stale: RuntimeError",
     "qualityFlags": [
       "cold_reservoir_building_72h",
       "lp_approaching_favored_sector",
@@ -121,7 +121,8 @@
       "missing_ice_wind_partial",
       "missing_sea_temperature_partial",
       "missing_ventil_index",
-      "partial_point_fetch_errors"
+      "partial_point_fetch_errors",
+      "stale_due_to_failed_update"
     ],
     "selectedTimes": {
       "now": {
@@ -141,7 +142,7 @@
   },
   "output": {
     "level": "GRN",
-    "phase": "PITERAQ LOW",
+    "phase": "STALE (PITERAQ LOW)",
     "message": "GRN19 12-24T RES42 TRG19 CPL37 ICE1014 SEA1001 GR12.8 AG-1 SF63.2 LPB48 LPV28 LPS62 VG? CG? CT24+9"
   }
 }
