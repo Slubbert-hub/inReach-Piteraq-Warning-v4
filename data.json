@@ -1,7 +1,7 @@
 {
   "meta": {
     "source": "DMI HARMONIE",
-    "updatedAt": "2026-08-23 04:46 UTC",
+    "updatedAt": "2026-08-23 05:36 UTC",
     "location": "TASIILAQ",
     "model": "harmonie_ig_sf",
     "forecastInfo": "Latest update failed: RuntimeError",
@@ -130,7 +130,7 @@
   },
   "output": {
     "level": "YEL",
-    "phase": "STALE (PITERAQ BUILDING)",
+    "phase": "STALE (STALE (PITERAQ BUILDING))",
     "message": "YEL36 12-24T RES51 TRG43 CPL54 ICE1016 SEA988 GR27.4 AG13 SF60.3 LPB173 LPV-78 LPS20 VG4 CG20 CT24+2"
   }
 }

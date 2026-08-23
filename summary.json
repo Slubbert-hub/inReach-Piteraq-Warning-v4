@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-23 04:46 UTC",
+  "updatedAt": "2026-08-23 05:36 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
   "instanceId": "2026-08-23T000000Z",
@@ -7,7 +7,7 @@
   "forecastInfo": "Latest update failed: RuntimeError",
   "stale": true,
   "level": "YEL",
-  "phase": "STALE (PITERAQ BUILDING)",
+  "phase": "STALE (STALE (PITERAQ BUILDING))",
   "risk": 36,
   "watch": false,
   "message": "YEL36 12-24T RES51 TRG43 CPL54 ICE1016 SEA988 GR27.4 AG13 SF60.3 LPB173 LPV-78 LPS20 VG4 CG20 CT24+2",
