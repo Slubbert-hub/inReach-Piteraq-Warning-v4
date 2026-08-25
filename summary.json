@@ -1,17 +1,17 @@
 {
-  "updatedAt": "2026-08-25 18:42 UTC",
+  "updatedAt": "2026-08-25 19:39 UTC",
   "location": "TASIILAQ",
   "model": "harmonie_ig_sf",
   "instanceId": "2026-08-25T150000Z",
   "lastSuccessfulUpdate": "2026-08-25 18:42 UTC",
-  "forecastInfo": "Latest available forecast step",
-  "stale": false,
+  "forecastInfo": "Latest update failed: RuntimeError",
+  "stale": true,
   "level": "GRN",
-  "phase": "LADNING",
+  "phase": "STALE (LADNING)",
   "risk": 15,
   "watch": false,
   "message": "GRN15 12-24T T? LAD RES73 TRG2 CPL6 ICE1028 SEA1023 GR5.4 AG? SF6NA LPB230 LPV? LPS20 VG? CG? CT24-1",
-  "trendDataStatus": "partial",
+  "trendDataStatus": "stale: RuntimeError",
   "qualityFlags": [
     "acceleration_estimated",
     "cyclone_outside_trigger_zone",
@@ -23,7 +23,8 @@
     "missing_sea_temperature_partial",
     "missing_ventil_index",
     "partial_point_fetch_errors",
-    "partial_trend_window"
+    "partial_trend_window",
+    "stale_due_to_failed_update"
   ],
   "reservoir": 73,
   "trigger": 2,
